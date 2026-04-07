@@ -1,0 +1,13 @@
+[project]
+name = "trajectory-monitor"
+version = "0.1.0"
+description = "Analyse les trajectoires d'exécution des agents LLM — detect anomalies, score quality, expose MCP"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends._legacy:_Backend"
