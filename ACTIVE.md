@@ -23,12 +23,14 @@
 - Demande explicite d'évolution
 - Découverte de bug en production
 
-## Veille run 2026-04-08 10:39
+## Veille run 2026-04-08 12:44
 - 13/13 tests ✅
 - 0 open GitHub issues
-- Real analysis: 45 jobs, 45 signals (12 critical, 32 warnings), avg score 55/100
-- Trend: critical signals stable-high (7→12 since initial V1)
-- Top failures: forge-scout-signals (8/F), forge-chantier-mcp-audit (14/F), forge-imagine (19/F)
-- New concern: forge-chantier-mcp-audit crash_repeat 6x (write failures)
-- trajectory-monitor itself: 60/100 (C), 0 signals — healthy
+- Real analysis: 45 jobs, 45 signals (11 critical, 33 warnings), avg score 55/100
+- Trend: critical signals stable (11 vs 12 last run)
+- Top failures: forge-scout-signals (8/F), forge-imagine (19/F), forge-meta-improve (33/F)
+- forge-chantier-mcp-audit improved: 39/F (was 14/F — possible recovery)
+- trajectory-monitor itself: 36/F (1 consecutive error — self-detecting own past failures)
+- PRIORITIES.md updated: P1 marked DONE (was stale), P2 marked IN PROGRESS
 - No bugs found, no new features needed
+- Phase remains VEILLE
