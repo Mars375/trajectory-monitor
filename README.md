@@ -69,6 +69,7 @@ python -m trajectory_monitor.cli analyze --json
 | **duration_spike** | Last run duration >3x the historical average |
 | **token_bloat** | Output tokens monotonically increasing across 3+ runs (1.5x+ growth) |
 | **consecutive_errors** | Job has consecutiveErrors > 0 in state |
+| **feature_race** | 3+ consecutive feature-add runs without intermediate validation (🔴 ≥5x, ⚠️ 3x) |
 
 ## Quality Score (0-100)
 
@@ -87,7 +88,7 @@ Grades: A (≥90) / B (≥75) / C (≥60) / D (≥40) / F (<40)
 ```
 trajectory_monitor/
 ├── parser.py        # Parse jobs.json + JSONL run transcripts
-├── signals.py       # 6 anomaly detectors
+├── signals.py       # 7 anomaly detectors (crash_repeat, loop, stagnation, duration_spike, token_bloat, consecutive_errors, feature_race)
 ├── scorer.py        # Quality score (0-100) with breakdown
 ├── report.py        # Terminal + JSON output
 ├── mcp_server.py    # MCP tool functions (for agent self-inspection)

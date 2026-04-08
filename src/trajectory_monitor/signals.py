@@ -6,6 +6,7 @@ Signals:
 3. Stagnation — no runs recorded (job exists but never executed)
 4. DurationSpike — run duration suddenly 3x+ the average
 5. TokenBloat — output tokens spiraling upward across runs
+6. FeatureRace — multiple feature additions without intermediate validation
 """
 
 from __future__ import annotations
@@ -192,6 +193,73 @@ def detect_consecutive_errors(job: JobState) -> Signal | None:
     return None
 
 
+# ── Feature-race detector ───────────────────────────────────────
+
+_FEATURE_PATTERNS: list[re.Pattern] = [
+    re.compile(
+        r"\b(?:added?|impl(?:ement|ément)(?:ed|[eé]e?s?)?|"
+        r"creat(?:ed|[eé]e?s?)|cr[eé]{2}s?|"
+        r"built|introduced?|nouvelle?s?\s+feature|"
+        r"ajout[eé]?s?|nouvelles?\s+fonction)\b",
+        re.I,
+    ),
+]
+_VALIDATION_PATTERNS: list[re.Pattern] = [
+    re.compile(
+        r"\b(test(?:ed?|s)?|valid(?:ated?|ation|é)|v[eé]rifi[eé]|fix(?:ed)?|"
+        r"corrig[eé]|smoke\s*test|pytest|assert|bugfix)\b",
+        re.I,
+    ),
+]
+
+
+def _mentions_feature(summary: str) -> bool:
+    return any(p.search(summary) for p in _FEATURE_PATTERNS)
+
+
+def _mentions_validation(summary: str) -> bool:
+    return any(p.search(summary) for p in _VALIDATION_PATTERNS)
+
+
+def detect_feature_race(job: JobState) -> Signal | None:
+    """Detect 3+ consecutive feature-adding runs without intermediate validation.
+
+    Specific to the forge context: a cron that keeps shipping new features
+    in every run without ever stopping to test/validate them is likely
+    accumulating broken code.
+    """
+    ok_runs = [r for r in job.runs if r.summary and not r.is_error]
+    if len(ok_runs) < 3:
+        return None
+
+    streak = 0
+    max_streak = 0
+    streak_summaries: list[str] = []
+
+    for run in ok_runs:
+        if _mentions_feature(run.summary) and not _mentions_validation(run.summary):
+            streak += 1
+            streak_summaries.append(run.summary[:60])
+            if streak > max_streak:
+                max_streak = streak
+        else:
+            streak = 0
+            streak_summaries = []
+
+    if max_streak >= 3:
+        severity = Severity.CRITICAL if max_streak >= 5 else Severity.WARNING
+        return Signal(
+            kind="feature_race",
+            severity=severity,
+            message=(
+                f"{max_streak} consecutive feature-add runs without validation"
+            ),
+            job_name=job.name,
+            details={"streak": max_streak, "summaries": streak_summaries[:5]},
+        )
+    return None
+
+
 # Registry of all detectors
 DETECTORS = [
     detect_consecutive_errors,
@@ -200,6 +268,7 @@ DETECTORS = [
     detect_stagnation,
     detect_duration_spike,
     detect_token_bloat,
+    detect_feature_race,
 ]
 
 

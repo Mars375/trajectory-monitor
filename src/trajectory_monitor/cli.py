@@ -6,8 +6,15 @@ import argparse
 import sys
 from pathlib import Path
 
-from .parser import build_job_states
-from .report import generate_json_report, generate_terminal_report
+if __package__ in {None, ""}:
+    package_root = Path(__file__).resolve().parents[1]
+    if str(package_root) not in sys.path:
+        sys.path.insert(0, str(package_root))
+    from trajectory_monitor.parser import build_job_states
+    from trajectory_monitor.report import generate_json_report, generate_terminal_report
+else:
+    from .parser import build_job_states
+    from .report import generate_json_report, generate_terminal_report
 
 
 def default_jobs_json() -> str:

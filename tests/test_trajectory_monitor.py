@@ -21,6 +21,7 @@ from trajectory_monitor.signals import (
     detect_consecutive_errors,
     detect_crash_repeat,
     detect_duration_spike,
+    detect_feature_race,
     detect_loop,
     detect_stagnation,
 )
@@ -188,6 +189,110 @@ class TestSignals:
         results = analyze_all(jobs)
         assert "crashing-job" in results
         assert len(results["crashing-job"]) >= 1
+
+    def test_detect_feature_race_triggers(self):
+        """3+ consecutive feature-add summaries without validation → signal."""
+        job = JobState(
+            job_id="race-001",
+            name="forge-chantier-memos",
+            runs=[
+                RunEntry(ts=1000, job_id="race-001", action="finished", status="ok",
+                         duration_ms=30000, summary="Added recall filters for date range",
+                         input_tokens=500, output_tokens=300, total_tokens=800),
+                RunEntry(ts=2000, job_id="race-001", action="finished", status="ok",
+                         duration_ms=32000, summary="Implemented tag-based deduplication",
+                         input_tokens=550, output_tokens=320, total_tokens=870),
+                RunEntry(ts=3000, job_id="race-001", action="finished", status="ok",
+                         duration_ms=28000, summary="Created export feature for markdown",
+                         input_tokens=520, output_tokens=310, total_tokens=830),
+                RunEntry(ts=4000, job_id="race-001", action="finished", status="ok",
+                         duration_ms=35000, summary="Built semantic clustering pipeline",
+                         input_tokens=600, output_tokens=400, total_tokens=1000),
+            ],
+        )
+        signal = detect_feature_race(job)
+        assert signal is not None
+        assert signal.kind == "feature_race"
+        assert signal.severity == Severity.WARNING  # streak=4 (< 5)
+        assert signal.details["streak"] == 4
+
+    def test_detect_feature_race_critical(self):
+        """5+ feature-add runs → CRITICAL severity."""
+        job = JobState(
+            job_id="race-002",
+            name="forge-chantier-chaos",
+            runs=[
+                RunEntry(ts=i * 1000, job_id="race-002", action="finished", status="ok",
+                         duration_ms=30000, summary=f"Added feature {i}",
+                         input_tokens=500, output_tokens=300, total_tokens=800)
+                for i in range(6)
+            ],
+        )
+        signal = detect_feature_race(job)
+        assert signal is not None
+        assert signal.severity == Severity.CRITICAL  # streak=6 (>= 5)
+
+    def test_detect_feature_race_no_signal_with_validation(self):
+        """Feature runs interspersed with validation → no signal."""
+        job = JobState(
+            job_id="safe-001",
+            name="forge-chantier-safe",
+            runs=[
+                RunEntry(ts=1000, job_id="safe-001", action="finished", status="ok",
+                         duration_ms=30000, summary="Added recall filters for date range",
+                         input_tokens=500, output_tokens=300, total_tokens=800),
+                RunEntry(ts=2000, job_id="safe-001", action="finished", status="ok",
+                         duration_ms=32000, summary="Implemented tag-based deduplication",
+                         input_tokens=550, output_tokens=320, total_tokens=870),
+                RunEntry(ts=3000, job_id="safe-001", action="finished", status="ok",
+                         duration_ms=28000, summary="Validated all filters with pytest",
+                         input_tokens=520, output_tokens=310, total_tokens=830),
+                RunEntry(ts=4000, job_id="safe-001", action="finished", status="ok",
+                         duration_ms=35000, summary="Created export feature for markdown",
+                         input_tokens=600, output_tokens=400, total_tokens=1000),
+            ],
+        )
+        signal = detect_feature_race(job)
+        # Validation run breaks the streak at 2, which is < 3
+        assert signal is None
+
+    def test_detect_feature_race_no_signal_too_few(self):
+        """Fewer than 3 feature runs → no signal."""
+        job = JobState(
+            job_id="short-001",
+            name="forge-chantier-short",
+            runs=[
+                RunEntry(ts=1000, job_id="short-001", action="finished", status="ok",
+                         duration_ms=30000, summary="Added feature A",
+                         input_tokens=500, output_tokens=300, total_tokens=800),
+                RunEntry(ts=2000, job_id="short-001", action="finished", status="ok",
+                         duration_ms=32000, summary="Implemented feature B",
+                         input_tokens=550, output_tokens=320, total_tokens=870),
+            ],
+        )
+        signal = detect_feature_race(job)
+        assert signal is None
+
+    def test_detect_feature_race_french_keywords(self):
+        """French feature keywords (ajouté, implémenté) are detected."""
+        job = JobState(
+            job_id="fr-001",
+            name="forge-chantier-fr",
+            runs=[
+                RunEntry(ts=1000, job_id="fr-001", action="finished", status="ok",
+                         duration_ms=30000, summary="Ajouté filtres de recherche avancée",
+                         input_tokens=500, output_tokens=300, total_tokens=800),
+                RunEntry(ts=2000, job_id="fr-001", action="finished", status="ok",
+                         duration_ms=32000, summary="Implémenté déduplication par tags",
+                         input_tokens=550, output_tokens=320, total_tokens=870),
+                RunEntry(ts=3000, job_id="fr-001", action="finished", status="ok",
+                         duration_ms=28000, summary="Créé export markdown des résultats",
+                         input_tokens=520, output_tokens=310, total_tokens=830),
+            ],
+        )
+        signal = detect_feature_race(job)
+        assert signal is not None
+        assert signal.kind == "feature_race"
 
 
 # ── Scorer tests ──────────────────────────────────────────────────

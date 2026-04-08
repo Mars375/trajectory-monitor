@@ -24,11 +24,18 @@ Validé : `python -m trajectory_monitor analyze /home/orion/.openclaw/cron/jobs.
 
 ---
 
-## [~] P2 — Signaux Stagnation et Feature-race (stagnation done, feature-race TODO)
+## [x] P2 — Signaux Feature-race + Stagnation ✅ (2026-04-08)
 **Objectif** : Détecter les sessions agents qui n'avancent pas ou ajoutent des features sans valider.
 
-Stagnation : aucune action concrète depuis N étapes dans un transcript.
-Feature-race : N commits en <1h sans test run entre les deux.
+Implémenté :
+- Stagnation : aucune action concrète depuis N étapes dans un transcript
+- Feature-race : N+3 runs consécutifs avec ajout de features sans validation intermédiaire
+  - Mots-clés EN/FR : added, implemented, created, built, ajouté, implémenté, créé
+  - Validation keywords cassent le streak : test, validated, fix, corrigé, vérifié
+  - Seuils : WARNING à 3 streak, CRITICAL à 5+
+  - Tests unitaires : 6 nouveaux tests (trigger, critical, no-signal-with-validation, too-few, french-keywords)
+
+Validé sur données réelles : 3 jobs with feature_race signal (orphan:a4c76d01=10x CRITICAL, orphan:158055cd=3x, orphan:c703caef=3x)
 
 ---
 
