@@ -22,3 +22,13 @@
 - Issue GitHub ouverte par communauté ou handler
 - Demande explicite d'évolution
 - Découverte de bug en production
+
+## Veille run 2026-04-08 10:39
+- 13/13 tests ✅
+- 0 open GitHub issues
+- Real analysis: 45 jobs, 45 signals (12 critical, 32 warnings), avg score 55/100
+- Trend: critical signals stable-high (7→12 since initial V1)
+- Top failures: forge-scout-signals (8/F), forge-chantier-mcp-audit (14/F), forge-imagine (19/F)
+- New concern: forge-chantier-mcp-audit crash_repeat 6x (write failures)
+- trajectory-monitor itself: 60/100 (C), 0 signals — healthy
+- No bugs found, no new features needed
