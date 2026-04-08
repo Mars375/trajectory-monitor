@@ -55,7 +55,34 @@ Validé : `python -m trajectory_monitor serve` démarre le serveur MCP stdio.
 
 ---
 
-## [ ] P4 — Intégration OpenClaw native
-**Objectif** : forge-meta-improve appelle trajectory-monitor pour enrichir son analyse hebdo.
+## [x] P4 — Intégration OpenClaw native ✅ (2026-04-08)
+**Objectif** : Script `tools/analyze_openclaw.py` qui analyse les crons forge et produit un rapport markdown.
 
-Script `tools/analyze_openclaw.py` qui analyse tous les crons forge et produit un rapport markdown.
+Implémenté :
+- `tools/analyze_openclaw.py` : rapport forge-focused markdown
+- Filtre forge-* jobs, génère tableau de scores, signaux détaillés, recommandations
+- Mode `--json` pour rapport complet, `--output` pour fichier, `--all` pour tous les jobs
+- Comparaison automatique forge vs non-forge
+- 20 nouveaux tests (50 total, tous verts)
+- Auto-détection des paths OpenClaw
+
+Validé : 10 forge jobs analysés, 4 signaux critiques détectés, rapport markdown de 130 lignes.
+
+---
+
+## [x] P5 — Hallucination-pattern detector ✅ (2026-04-08)
+**Objectif** : Détecter les références à des fichiers/fonctions qui n'existent pas dans les summaries de runs.
+
+Implémenté :
+- Extraction de chemins de fichiers depuis les summaries (regex: paths avec dirs + bare filenames en backticks)
+- **Re-creation detection** : fichier clamé "created" dans 2+ runs différents → probablement jamais persisté
+- **Burst detection** : un run référence 5+ fichiers uniques non mentionnés ailleurs → hallucination potentielle
+- **Workspace existence check** :  vérifie les fichiers sur disque
+- 22 nouveaux tests (72 total, tous verts)
+- Recommandation ajoutée au rapport forge
+
+Validé sur données réelles : 9 hallucination signals détectés sur les crons OpenClaw (re-creation + burst).
+Exemples : forge-imagine re-crée PLAN.md/RESULT.md/TOOLS.md sur plusieurs runs, orphan jobs avec burst de fichiers uniques.
+
+### Next
+- V2 backlog: feature-race avancé, hallucination avec vérification filesystem intégrée au MCP, scoring par type de signal

@@ -260,6 +260,184 @@ def detect_feature_race(job: JobState) -> Signal | None:
     return None
 
 
+# ── Hallucination-pattern detector ────────────────────────────────
+
+# Extract file paths with directory components: src/foo.py, path/to/file.md
+_FILE_PATH_RE = re.compile(
+    r"(?:^|[\s,(\[{\"'])"
+    r"(`{1,2})?"
+    r"("
+    r"(?:[\w.-]+/)+"
+    r"[\w.-]+\.[a-zA-Z]{1,12}"
+    r")"
+    r"(?:\1)?"
+    r"(?:[\s,)\]}\"]|$)",
+    re.MULTILINE,
+)
+
+# Bare filenames in backticks with common extensions
+_BARE_FILE_RE = re.compile(
+    r"`([\w.-]+\.(?:py|js|ts|md|json|yaml|yml|toml|sh|txt|cfg|ini|rs|go))`"
+)
+
+# Verbs implying file creation
+_CREATE_MODIFY_RE = re.compile(
+    r"\b(?:created?|added?|wrote|writ(?:ing|ten)|built|implement(?:ed|ing)?|"
+    r"generat(?:ed|ing)?|new\s+file|modifi(?:ed|cation)|"
+    r"ajout[eé]s?|cr[eé]{2}[a-z]*|impl[eé]ment(?:é|e)s?)\b",
+    re.I,
+)
+
+
+def _extract_file_paths(text: str) -> set[str]:
+    """Extract file path references from text."""
+    paths: set[str] = set()
+    for m in _FILE_PATH_RE.finditer(text):
+        paths.add(m.group(2))
+    for m in _BARE_FILE_RE.finditer(text):
+        paths.add(m.group(1))
+    return {p for p in paths if len(p) >= 5 and "." in p.split("/")[-1]}
+
+
+def _extract_creation_files(text: str) -> set[str]:
+    """Extract file paths mentioned in a creation context."""
+    files = _extract_file_paths(text)
+    if not files:
+        return set()
+
+    creation_files: set[str] = set()
+    for m in _CREATE_MODIFY_RE.finditer(text):
+        start = max(0, m.start() - 40)
+        end = min(len(text), m.end() + 80)
+        context = text[start:end]
+        for f in files:
+            if f in context:
+                creation_files.add(f)
+    return creation_files
+
+
+def detect_hallucination_pattern(job: JobState) -> Signal | None:
+    """Detect potential hallucination: agent re-creates the same file across runs.
+
+    Heuristic: If a run claims to create/add a file, and a later run
+    claims to create/add the SAME file again, the file was likely
+    never actually persisted (hallucinated creation).
+    Also flags when a run references many files (>5) that never
+    appear in any other run (potential bulk hallucination).
+    """
+    ok_runs = [r for r in job.runs if r.summary and not r.is_error]
+    if len(ok_runs) < 2:
+        return None
+
+    creation_map: dict[str, list[int]] = {}
+    all_referenced: dict[str, set[int]] = {}
+
+    for i, run in enumerate(ok_runs):
+        created = _extract_creation_files(run.summary)
+        referenced = _extract_file_paths(run.summary)
+
+        for f in created:
+            creation_map.setdefault(f, []).append(i)
+        for f in referenced:
+            all_referenced.setdefault(f, set()).add(i)
+
+    # Check 1: File claimed as 'created' in 2+ different runs
+    re_created = {f: runs for f, runs in creation_map.items() if len(runs) >= 2}
+    if re_created:
+        files_str = ", ".join(f"`{f}`" for f in sorted(re_created)[:5])
+        count = len(re_created)
+        severity = Severity.CRITICAL if count >= 3 else Severity.WARNING
+        return Signal(
+            kind="hallucination_pattern",
+            severity=severity,
+            message=(
+                f"{count} file(s) claimed as 'created' in multiple runs "
+                f"(likely never persisted): {files_str}"
+            ),
+            job_name=job.name,
+            details={
+                "re_created_files": {f: len(runs) for f, runs in sorted(re_created.items())[:10]},
+                "type": "re_creation",
+            },
+        )
+
+    # Check 2: Single run references many unique files not seen elsewhere
+    for i, run in enumerate(ok_runs):
+        referenced = _extract_file_paths(run.summary)
+        if len(referenced) < 5:
+            continue
+        unique = {f for f in referenced if all_referenced.get(f, set()) == {i}}
+        if len(unique) >= 5:
+            files_str = ", ".join(f"`{f}`" for f in sorted(unique)[:5])
+            return Signal(
+                kind="hallucination_pattern",
+                severity=Severity.WARNING,
+                message=(
+                    f"Run references {len(unique)} files not mentioned in any "
+                    f"other run: {files_str}"
+                ),
+                job_name=job.name,
+                details={
+                    "unique_files": sorted(unique)[:10],
+                    "total_referenced": len(referenced),
+                    "type": "burst",
+                },
+            )
+
+    return None
+
+
+def check_file_existence(
+    job: JobState, workspace_path: str | Path
+) -> Signal | None:
+    """Check if file paths referenced in summaries actually exist on disk.
+
+    Workspace-aware check requiring filesystem access.
+    Not registered in DETECTORS — called explicitly with workspace context.
+    """
+    from pathlib import Path as _Path
+
+    ws = _Path(workspace_path)
+    ok_runs = [r for r in job.runs if r.summary and not r.is_error]
+    if not ok_runs:
+        return None
+
+    all_files: dict[str, int] = {}
+    for run in ok_runs:
+        for f in _extract_file_paths(run.summary):
+            all_files[f] = all_files.get(f, 0) + 1
+
+    if not all_files:
+        return None
+
+    missing: dict[str, int] = {}
+    for f, count in all_files.items():
+        candidates = [_Path(f), ws / f]
+        found = any(c.exists() for c in candidates)
+        if not found:
+            missing[f] = count
+
+    if len(missing) >= 3:
+        files_str = ", ".join(f"`{f}`" for f in sorted(missing)[:5])
+        severity = Severity.CRITICAL if len(missing) >= 6 else Severity.WARNING
+        return Signal(
+            kind="hallucination_pattern",
+            severity=severity,
+            message=(
+                f"{len(missing)} referenced file(s) not found in workspace: "
+                f"{files_str}"
+            ),
+            job_name=job.name,
+            details={
+                "missing_files": sorted(missing.keys())[:15],
+                "total_referenced": len(all_files),
+                "workspace": str(ws),
+                "type": "missing_on_disk",
+            },
+        )
+    return None
+
+
 # Registry of all detectors
 DETECTORS = [
     detect_consecutive_errors,
@@ -269,6 +447,7 @@ DETECTORS = [
     detect_duration_spike,
     detect_token_bloat,
     detect_feature_race,
+    detect_hallucination_pattern,
 ]
 
 

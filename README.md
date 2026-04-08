@@ -93,6 +93,8 @@ trajectory_monitor/
 ├── report.py        # Terminal + JSON output
 ├── mcp_server.py    # MCP tool functions (for agent self-inspection)
 └── cli.py           # CLI interface
+tools/
+└── analyze_openclaw.py  # Forge-specific markdown report generator
 ```
 
 ## MCP Integration
@@ -109,6 +111,35 @@ status = tool_check_job("/path/to/jobs.json", "forge-imagine", "/path/to/runs")
 # Quick score
 score = tool_get_score("/path/to/jobs.json", "forge-imagine", "/path/to/runs")
 ```
+
+## Forge Report Tool
+
+The `tools/analyze_openclaw.py` script generates a forge-specific markdown report for `forge-meta-improve`:
+
+```bash
+# Analyze forge crons only (default)
+python3 tools/analyze_openclaw.py
+
+# Output to file
+python3 tools/analyze_openclaw.py --output forge-report.md
+
+# Full JSON report (all jobs)
+python3 tools/analyze_openclaw.py --json
+
+# Include all jobs, not just forge-*
+python3 tools/analyze_openclaw.py --all
+
+# Explicit paths
+python3 tools/analyze_openclaw.py --jobs-json /path/to/jobs.json --runs-dir /path/to/runs
+```
+
+The report includes:
+- Summary metrics (average score, signal counts, failing jobs)
+- Score table for all forge jobs
+- Detailed signal breakdown per job
+- Actionable recommendations for failing jobs
+- Run details (duration, tokens, status)
+- Non-forge job context for comparison
 
 ## Requirements
 
