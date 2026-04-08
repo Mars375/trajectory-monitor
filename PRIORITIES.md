@@ -39,10 +39,19 @@ Validé sur données réelles : 3 jobs with feature_race signal (orphan:a4c76d01
 
 ---
 
-## [ ] P3 — MCP server (auto-introspection agent)
+## [x] P3 — MCP server (auto-introspection agent) ✅ (2026-04-08)
 **Objectif** : L'agent peut appeler trajectory-monitor sur lui-même en cours de session.
 
-Outil MCP `analyze_session(log)` → retourne les signaux détectés + score qualité.
+Implémenté :
+- `mcp_server.py` : Serveur MCP avec FastMCP (mcp 1.27.0)
+- 5 outils MCP : `analyze_jobs`, `check_job`, `get_score`, `analyze_session`, `list_signals`
+- `analyze_session` : accepte texte JSONL ou chemin fichier, analyse complète (signaux + score)
+- `list_signals` : liste les 7 détecteurs disponibles
+- CLI `serve` command : `trajectory-monitor serve` démarre le serveur MCP
+- 12 nouveaux tests unitaires (30 total, tous verts)
+- Auto-détection des paths OpenClaw
+
+Validé : `python -m trajectory_monitor serve` démarre le serveur MCP stdio.
 
 ---
 

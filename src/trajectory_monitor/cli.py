@@ -50,8 +50,8 @@ def main(argv: list[str] | None = None) -> int:
         "command",
         nargs="?",
         default="analyze",
-        choices=["analyze"],
-        help="Command to run (default: analyze)",
+        choices=["analyze", "serve"],
+        help="Command to run (default: analyze; 'serve' starts MCP server)",
     )
     parser.add_argument(
         "target",
@@ -71,6 +71,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
+
+    if args.command == "serve":
+        from .mcp_server import main_serve
+        main_serve()
+        return 0
 
     jobs_json = args.target or default_jobs_json()
     runs_dir = args.runs_dir or default_runs_dir()
