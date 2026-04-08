@@ -101,7 +101,9 @@ def generate_json_report(jobs: list[JobState]) -> str:
         "jobs": [],
     }
 
-    for job, score in zip(jobs, [s for s in sorted(scores, key=lambda x: x.job_name)]):
+    score_by_name = {s.job_name: s for s in scores}
+    for job in jobs:
+        score = score_by_name[job.name]
         sigs = signals_by_job.get(job.name, [])
         report["jobs"].append(
             {
