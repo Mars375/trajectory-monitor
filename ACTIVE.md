@@ -3,7 +3,7 @@
 **Phase**: VEILLE
 **Repo**: https://github.com/Mars375/trajectory-monitor
 **Tag**: v0.1.0
-**Last validated**: 2026-04-07
+**Last validated**: 2026-04-08
 
 ## État
 - 13/13 tests passants
