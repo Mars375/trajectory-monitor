@@ -70,6 +70,7 @@ python -m trajectory_monitor.cli analyze --json
 | **token_bloat** | Output tokens monotonically increasing across 3+ runs (1.5x+ growth) |
 | **consecutive_errors** | Job has consecutiveErrors > 0 in state |
 | **feature_race** | 3+ consecutive feature-add runs without intermediate validation (🔴 ≥5x, ⚠️ 3x) |
+| **hallucination_pattern** | References to files/functions that don't exist (re-creation, burst, workspace check) |
 
 ## Quality Score (0-100)
 
@@ -87,29 +88,30 @@ Grades: A (≥90) / B (≥75) / C (≥60) / D (≥40) / F (<40)
 
 ```
 trajectory_monitor/
-├── parser.py        # Parse jobs.json + JSONL run transcripts
-├── signals.py       # 7 anomaly detectors (crash_repeat, loop, stagnation, duration_spike, token_bloat, consecutive_errors, feature_race)
+├── parser.py           # Parse jobs.json + JSONL run transcripts
+├── signals.py          # 8 anomaly detectors (crash_repeat, loop, stagnation, duration_spike, token_bloat, consecutive_errors, feature_race)
 ├── scorer.py        # Quality score (0-100) with breakdown
-├── report.py        # Terminal + JSON output
-├── mcp_server.py    # MCP tool functions (for agent self-inspection)
-└── cli.py           # CLI interface
+├── report.py           # Terminal + JSON output (with recommendations)
+├── recommendations.py  # Actionable fix suggestions per signal type + severity
+├── mcp_server.py       # MCP tool functions (5 tools for agent self-inspection)
+└── cli.py              # CLI interface
 tools/
-└── analyze_openclaw.py  # Forge-specific markdown report generator
+└── analyze_openclaw.py # Forge-specific markdown report generator
 ```
 
 ## MCP Integration
 
 ```python
-from trajectory_monitor.mcp_server import tool_analyze_jobs, tool_check_job, tool_get_score
+from trajectory_monitor.mcp_server import analyze_jobs, check_job, get_score
 
 # Full analysis
-report_json = tool_analyze_jobs("/path/to/jobs.json", "/path/to/runs")
+report_json = analyze_jobs(jobs_json_path="/path/to/jobs.json", runs_dir="/path/to/runs")
 
 # Single job
-status = tool_check_job("/path/to/jobs.json", "forge-imagine", "/path/to/runs")
+status = check_job(job_name="forge-imagine", jobs_json_path="/path/to/jobs.json", runs_dir="/path/to/runs")
 
 # Quick score
-score = tool_get_score("/path/to/jobs.json", "forge-imagine", "/path/to/runs")
+score = get_score(job_name="forge-imagine", jobs_json_path="/path/to/jobs.json", runs_dir="/path/to/runs")
 ```
 
 ## Forge Report Tool
@@ -140,6 +142,28 @@ The report includes:
 - Actionable recommendations for failing jobs
 - Run details (duration, tokens, status)
 - Non-forge job context for comparison
+
+## Recommendations Engine
+
+Every analysis report includes an actionable **📋 RECOMMENDATIONS** section:
+
+```
+  📋 RECOMMENDATIONS
+  ────────────────────────────────────────────────────────
+  🔴 HIGH  [crash_repeat] forge-imagine
+     → Investigate root cause: "cron: job execution timed out"
+     Same error 17x. Check if target task is too large or has a bug.
+
+  🟡 MED   [feature_race] orphan:a4c76d01
+     → STOP adding features. Validate existing work first.
+     10 consecutive feature-add runs without testing.
+
+  🟢 LOW   [duration_spike] forge-gate
+     → Check if last run had legitimate extra work.
+     Duration spike: 29.1x average.
+```
+
+Each recommendation maps a signal type + severity to a specific action with context from the signal data (error messages, streak counts, growth factors). Recommendations are sorted by priority (high → medium → low).
 
 ## Requirements
 
