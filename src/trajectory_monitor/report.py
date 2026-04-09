@@ -140,6 +140,7 @@ def generate_json_report(jobs: list[JobState]) -> str:
                 "name": job.name,
                 "score": score.score,
                 "grade": score.grade,
+                "signal_penalties": {k: round(v, 1) for k, v in score.signal_penalties.items()},
                 "trend": trend_to_dict(trends_by_job[job.name]),
                 "total_runs": job.total_runs,
                 "error_rate": round(job.error_rate, 2),

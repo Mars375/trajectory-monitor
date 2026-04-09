@@ -18,6 +18,7 @@ class QualityScore:
     signals_count: int
     critical_count: int
     warning_count: int
+    signal_penalties: dict[str, float]
 
     @property
     def grade(self) -> str:
@@ -45,6 +46,40 @@ class QualityTrend:
     error_rate_delta: float
     duration_delta_pct: float | None = None
     token_delta_pct: float | None = None
+
+
+_BASE_SIGNAL_PENALTIES = {
+    Severity.CRITICAL: 15.0,
+    Severity.WARNING: 8.0,
+    Severity.INFO: 2.0,
+}
+
+_SIGNAL_KIND_WEIGHTS = {
+    "consecutive_errors": 1.4,
+    "crash_repeat": 1.3,
+    "hallucination_pattern": 1.3,
+    "regression_trend": 1.2,
+    "feature_race": 1.2,
+    "loop": 1.1,
+    "duration_spike": 0.8,
+    "token_bloat": 0.7,
+    "stagnation": 0.5,
+}
+
+
+def _score_signal_penalties(signals: list[Signal]) -> tuple[float, dict[str, float]]:
+    """Return weighted signal penalties, keyed by signal kind."""
+    penalties: dict[str, float] = {}
+    total = 0.0
+
+    for signal in signals:
+        base = _BASE_SIGNAL_PENALTIES.get(signal.severity, 2.0)
+        weight = _SIGNAL_KIND_WEIGHTS.get(signal.kind, 1.0)
+        penalty = round(base * weight, 1)
+        penalties[signal.kind] = round(penalties.get(signal.kind, 0.0) + penalty, 1)
+        total += penalty
+
+    return round(total, 1), penalties
 
 
 def score_job(job: JobState, extra_signals: list[Signal] | None = None) -> QualityScore:
@@ -95,15 +130,8 @@ def score_job(job: JobState, extra_signals: list[Signal] | None = None) -> Quali
     else:
         breakdown["consistency"] = 10.0
 
-    # 5. Signal penalty (each signal costs points)
-    signal_penalty = 0
-    for s in signals:
-        if s.severity == Severity.CRITICAL:
-            signal_penalty += 15
-        elif s.severity == Severity.WARNING:
-            signal_penalty += 8
-        else:
-            signal_penalty += 2
+    # 5. Signal penalty (weighted by signal type + severity)
+    signal_penalty, signal_penalties = _score_signal_penalties(signals)
     breakdown["signal_penalty"] = -signal_penalty
 
     # 6. Enabled bonus
@@ -132,6 +160,7 @@ def score_job(job: JobState, extra_signals: list[Signal] | None = None) -> Quali
         signals_count=len(signals),
         critical_count=criticals,
         warning_count=warnings,
+        signal_penalties=signal_penalties,
     )
 
 

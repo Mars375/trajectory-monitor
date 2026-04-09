@@ -81,7 +81,9 @@ Composite score with components:
 - **Consistency** (0-20): Duration variance across runs
 - **Enabled** (0-10): Whether job is active
 - **Recovery** (0-10): Had errors but recovered
-- Penalties for consecutive errors and detected signals
+- Weighted penalties for consecutive errors and detected signals
+
+Signal penalties are severity-based **and** weighted by impact. Example: `consecutive_errors`, `crash_repeat`, `hallucination_pattern`, and `regression_trend` cost more than softer signals like `duration_spike`, `token_bloat`, or `stagnation`. JSON and MCP outputs expose a `signal_penalties` map so agents can see why a score dropped.
 
 Grades: A (≥90) / B (≥75) / C (≥60) / D (≥40) / F (<40)
 

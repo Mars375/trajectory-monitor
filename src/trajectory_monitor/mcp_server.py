@@ -128,6 +128,7 @@ def check_job(job_name: str, jobs_json_path: str = "", runs_dir: str = "") -> st
                 "consecutive_errors": job.consecutive_errors,
                 "signals": [_signal_payload(s) for s in signals],
                 "breakdown": score.breakdown,
+                "signal_penalties": {k: round(v, 1) for k, v in score.signal_penalties.items()},
             }, indent=2, ensure_ascii=False)
     return json.dumps({"error": f"Job '{job_name}' not found"})
 
@@ -156,6 +157,7 @@ def get_score(job_name: str, jobs_json_path: str = "", runs_dir: str = "") -> st
                 "grade": score.grade,
                 "trend": trend_to_dict(analyze_trend(job)),
                 "breakdown": {k: round(v, 1) for k, v in score.breakdown.items()},
+                "signal_penalties": {k: round(v, 1) for k, v in score.signal_penalties.items()},
             }, indent=2)
     return json.dumps({"error": f"Job '{job_name}' not found"})
 
@@ -279,6 +281,7 @@ def analyze_session(
         "grade": score.grade,
         "trend": trend_to_dict(analyze_trend(job)),
         "workspace_check": workspace_check,
+        "signal_penalties": {k: round(v, 1) for k, v in score.signal_penalties.items()},
         "signals": [_signal_payload(s) for s in signals],
         "recommendations": [_recommendation_payload(r) for r in recommendations],
     }, indent=2, ensure_ascii=False)

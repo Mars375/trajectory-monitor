@@ -152,6 +152,7 @@ class TestGetScore:
         assert "score" in data
         assert "grade" in data
         assert "breakdown" in data
+        assert "signal_penalties" in data
         assert data["job"] == "healthy-job"
 
     def test_get_score_nonexistent(self, tmp_workspace):

@@ -17,6 +17,7 @@ from trajectory_monitor.parser import (
 from trajectory_monitor.scorer import score_job, score_all
 from trajectory_monitor.signals import (
     Severity,
+    Signal,
     analyze_all,
     analyze_job,
     detect_consecutive_errors,
@@ -334,6 +335,31 @@ class TestScorer:
         stagnant = next(j for j in jobs if j.name == "stagnant-job")
         score = score_job(stagnant)
         assert 0 <= score.score <= 100
+
+    def test_weighted_signal_penalties_prioritize_high_impact_signals(self):
+        job = JobState(job_id="weighted-001", name="weighted-job", enabled=True, runs=[])
+
+        crash_score = score_job(
+            job,
+            extra_signals=[Signal(
+                kind="crash_repeat",
+                severity=Severity.WARNING,
+                message="Same error repeated 2x",
+                job_name=job.name,
+            )],
+        )
+        duration_score = score_job(
+            job,
+            extra_signals=[Signal(
+                kind="duration_spike",
+                severity=Severity.WARNING,
+                message="Last run 3x longer than average",
+                job_name=job.name,
+            )],
+        )
+
+        assert crash_score.score < duration_score.score
+        assert crash_score.signal_penalties["crash_repeat"] > duration_score.signal_penalties["duration_spike"]
 
     def test_score_all_sorted(self, tmp_workspace):
         jobs = build_job_states(tmp_workspace / "jobs.json", tmp_workspace / "runs")
