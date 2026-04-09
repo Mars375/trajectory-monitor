@@ -20,11 +20,11 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from .parser import JobState, build_job_states
+from .parser import JobState, build_job_states, parse_run_jsonl, parse_run_jsonl_text
 from .recommendations import generate_recommendations
 from .report import generate_json_report
 from .scorer import score_job
-from .signals import DETECTORS, analyze_job
+from .signals import DETECTORS, analyze_job, check_file_existence
 
 # ── Auto-detect paths ─────────────────────────────────────────────
 
@@ -210,58 +210,34 @@ def get_recommendations(job_name: str = "", jobs_json_path: str = "", runs_dir: 
 
 
 @mcp.tool()
-def analyze_session(transcript: str, job_name: str = "session") -> str:
-    """Analyze a session transcript (text) for anomalies. Agents can self-inspect.
+def analyze_session(
+    transcript: str,
+    job_name: str = "session",
+    workspace_path: str = "",
+) -> str:
+    """Analyze a session transcript (text or .jsonl path) for anomalies.
 
-    Parses the transcript as JSONL run data and runs all signal detectors.
-    Useful for checking your own trajectory mid-session.
+    Parses JSONL run data and runs all signal detectors.
+    If workspace_path is provided, also checks whether referenced files
+    actually exist on disk.
 
     Args:
         transcript: Session transcript — either a file path ending in .jsonl, or raw JSONL text (one JSON object per line)
         job_name: Name for this session (default: "session")
+        workspace_path: Optional workspace root for filesystem-aware hallucination checks
     """
-    entries_text = transcript.strip()
+    source = transcript.strip()
+    workspace = workspace_path.strip()
 
-    # If it looks like a file path, read it
-    if not entries_text.startswith("{") and Path(entries_text).exists():
-        p = Path(entries_text)
-        if p.suffix == ".jsonl":
-            entries_text = p.read_text()
-        else:
+    if not source:
+        runs = []
+    elif not source.startswith("{") and Path(source).exists():
+        p = Path(source)
+        if p.suffix != ".jsonl":
             return json.dumps({"error": f"File must be .jsonl, got {p.suffix}"})
-
-    # Parse JSONL lines into RunEntry-like data
-    from .parser import RunEntry
-
-    runs: list[RunEntry] = []
-    for line in entries_text.split("\n"):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-
-        if obj.get("action") != "finished":
-            continue
-
-        usage = obj.get("usage", {})
-        runs.append(RunEntry(
-            ts=obj.get("ts", 0),
-            job_id=obj.get("jobId", job_name),
-            action=obj.get("action", ""),
-            status=obj.get("status", "unknown"),
-            duration_ms=obj.get("durationMs", 0),
-            model=obj.get("model", ""),
-            provider=obj.get("provider", ""),
-            error=obj.get("error", ""),
-            summary=obj.get("summary", ""),
-            input_tokens=usage.get("input_tokens", 0),
-            output_tokens=usage.get("output_tokens", 0),
-            total_tokens=usage.get("total_tokens", 0),
-            session_id=obj.get("sessionId", ""),
-        ))
+        runs = parse_run_jsonl(p)
+    else:
+        runs = parse_run_jsonl_text(source, default_job_id=job_name)
 
     if not runs:
         return json.dumps({
@@ -269,7 +245,6 @@ def analyze_session(transcript: str, job_name: str = "session") -> str:
             "hint": "Provide JSONL with action=finished entries",
         })
 
-    # Build a synthetic JobState and analyze
     job = JobState(
         job_id=job_name,
         name=job_name,
@@ -277,8 +252,20 @@ def analyze_session(transcript: str, job_name: str = "session") -> str:
     )
 
     signals = analyze_job(job)
+    extra_signals = []
+    workspace_check = {
+        "enabled": bool(workspace),
+        "path": workspace,
+        "exists": bool(workspace) and Path(workspace).exists(),
+    }
+    if workspace_check["exists"]:
+        disk_signal = check_file_existence(job, workspace)
+        if disk_signal is not None:
+            extra_signals.append(disk_signal)
+            signals.append(disk_signal)
+
     recommendations = generate_recommendations(signals)
-    score = score_job(job)
+    score = score_job(job, extra_signals=extra_signals)
 
     return json.dumps({
         "session": job_name,
@@ -286,6 +273,7 @@ def analyze_session(transcript: str, job_name: str = "session") -> str:
         "errors": len(job.error_runs),
         "score": score.score,
         "grade": score.grade,
+        "workspace_check": workspace_check,
         "signals": [_signal_payload(s) for s in signals],
         "recommendations": [_recommendation_payload(r) for r in recommendations],
     }, indent=2, ensure_ascii=False)

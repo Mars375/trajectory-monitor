@@ -121,3 +121,22 @@ Validé sur données réelles : `get_recommendations(job_name="forge-chantier-tr
 
 ### Next
 - V2 backlog: trend analysis, JSONL transcript analysis, MCP live mode
+
+
+## [x] P8 — MCP workspace-aware transcript analysis ✅ (2026-04-09)
+**Objectif** : Fiabiliser `analyze_session` sur les transcripts JSONL réels et intégrer la vérification filesystem directement dans le MCP.
+
+Implémenté :
+- `parser.py` : parsing JSONL partagé via `parse_run_jsonl_text()`
+- Fallback de résumé : `summary` → `result.summary` / `result.text` / `message` / `text`
+- `mcp_server.py` : `analyze_session(..., workspace_path=...)` ajoute `workspace_check` au payload
+- Vérification disque intégrée : signal `hallucination_pattern` type `missing_on_disk` si les fichiers référencés n'existent pas
+- Le score de session tient aussi compte des signaux filesystem ajoutés côté MCP
+- 2 nouveaux tests unitaires → **101 tests** au total, tous verts
+
+Validé :
+- `python -m pytest tests/ -x -q` → 101 passed
+- `analyze_session` sur le transcript réel du cron `forge-chantier-trajectory-monitor` → 26 runs analysés, `workspace_check` actif
+
+### Next
+- V2 backlog: trend analysis, transcripts plus riches que les seuls événements `finished`, MCP live mode

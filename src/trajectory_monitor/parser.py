@@ -97,45 +97,68 @@ def parse_jobs_json(path: str | Path) -> list[JobState]:
     return jobs
 
 
+def _extract_summary(obj: dict) -> str:
+    """Best-effort summary extraction from OpenClaw-style finished entries."""
+    result = obj.get("result") or {}
+    return (
+        obj.get("summary")
+        or result.get("summary", "")
+        or result.get("text", "")
+        or obj.get("message", "")
+        or obj.get("text", "")
+        or ""
+    )
+
+
+def _parse_run_object(obj: dict, default_job_id: str = "") -> RunEntry | None:
+    """Parse a single finished JSON object into a RunEntry."""
+    if obj.get("action") != "finished":
+        return None
+
+    usage = obj.get("usage") or {}
+    return RunEntry(
+        ts=obj.get("ts", 0),
+        job_id=obj.get("jobId") or default_job_id,
+        action=obj.get("action", ""),
+        status=obj.get("status", "unknown"),
+        duration_ms=obj.get("durationMs", 0),
+        model=obj.get("model", ""),
+        provider=obj.get("provider", ""),
+        error=obj.get("error", ""),
+        summary=_extract_summary(obj),
+        input_tokens=usage.get("input_tokens", 0),
+        output_tokens=usage.get("output_tokens", 0),
+        total_tokens=usage.get("total_tokens", 0),
+        session_id=obj.get("sessionId", ""),
+    )
+
+
+def parse_run_jsonl_text(text: str, default_job_id: str = "") -> list[RunEntry]:
+    """Parse finished run entries from raw JSONL text."""
+    entries: list[RunEntry] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        entry = _parse_run_object(obj, default_job_id=default_job_id)
+        if entry is not None:
+            entries.append(entry)
+
+    return entries
+
+
 def parse_run_jsonl(path: str | Path) -> list[RunEntry]:
-    """Parse a single JSONL run transcript."""
+    """Parse a single JSONL run transcript file."""
     p = Path(path)
     if not p.exists():
         return []
 
-    entries: list[RunEntry] = []
-    with open(p) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-            if obj.get("action") != "finished":
-                continue
-
-            usage = obj.get("usage", {})
-            entries.append(
-                RunEntry(
-                    ts=obj.get("ts", 0),
-                    job_id=obj.get("jobId", ""),
-                    action=obj.get("action", ""),
-                    status=obj.get("status", "unknown"),
-                    duration_ms=obj.get("durationMs", 0),
-                    model=obj.get("model", ""),
-                    provider=obj.get("provider", ""),
-                    error=obj.get("error", ""),
-                    summary=obj.get("summary", ""),
-                    input_tokens=usage.get("input_tokens", 0),
-                    output_tokens=usage.get("output_tokens", 0),
-                    total_tokens=usage.get("total_tokens", 0),
-                    session_id=obj.get("sessionId", ""),
-                )
-            )
-    return entries
+    return parse_run_jsonl_text(p.read_text(), default_job_id=p.stem)
 
 
 def load_all_runs(runs_dir: str | Path) -> dict[str, list[RunEntry]]:

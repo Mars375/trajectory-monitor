@@ -32,9 +32,11 @@ class QualityScore:
         return "F"
 
 
-def score_job(job: JobState) -> QualityScore:
+def score_job(job: JobState, extra_signals: list[Signal] | None = None) -> QualityScore:
     """Score a single job's trajectory quality."""
     signals = analyze_job(job)
+    if extra_signals:
+        signals = [*signals, *extra_signals]
     breakdown: dict[str, float] = {}
 
     # 1. Error rate (0-30 points, penalized by error rate)

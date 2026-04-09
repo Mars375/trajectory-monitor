@@ -125,7 +125,11 @@ job_recs = get_recommendations(job_name="forge-imagine", jobs_json_path="/path/t
 all_recs = get_recommendations(jobs_json_path="/path/to/jobs.json", runs_dir="/path/to/runs")
 
 # Self-inspect a JSONL transcript mid-session
-session_report = analyze_session(transcript_jsonl, job_name="live-session")
+session_report = analyze_session(
+    transcript_jsonl,
+    job_name="live-session",
+    workspace_path="/path/to/workspace",  # optional, enables missing-file checks
+)
 
 # Discover available detectors
 signal_catalog = list_signals()

@@ -242,6 +242,45 @@ class TestAnalyzeSession:
         assert data["runs_analyzed"] == 4
         assert data["session"] == "file-session"
 
+    def test_analyze_session_with_workspace_check(self, tmp_path):
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        transcript = "\n".join([
+            json.dumps({
+                "ts": 1000,
+                "jobId": "ws",
+                "action": "finished",
+                "status": "ok",
+                "durationMs": 20000,
+                "summary": "Created src/parser.py, docs/guide.md and tests/test_parser.py",
+                "usage": {"input_tokens": 400, "output_tokens": 200, "total_tokens": 600},
+            }),
+            json.dumps({
+                "ts": 2000,
+                "jobId": "ws",
+                "action": "finished",
+                "status": "ok",
+                "durationMs": 18000,
+                "summary": "Validated parser behavior with pytest",
+                "usage": {"input_tokens": 420, "output_tokens": 210, "total_tokens": 630},
+            }),
+        ])
+
+        result = analyze_session(
+            transcript,
+            job_name="workspace-session",
+            workspace_path=str(workspace),
+        )
+        data = json.loads(result)
+        assert data["workspace_check"]["enabled"] is True
+        assert data["workspace_check"]["exists"] is True
+        missing_on_disk = [
+            s for s in data["signals"]
+            if s["kind"] == "hallucination_pattern" and s["details"].get("type") == "missing_on_disk"
+        ]
+        assert len(missing_on_disk) == 1
+        assert data["score"] < 75
+
     def test_analyze_session_empty(self):
         result = analyze_session("", job_name="empty")
         data = json.loads(result)

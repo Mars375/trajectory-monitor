@@ -12,6 +12,7 @@ from trajectory_monitor.parser import (
     build_job_states,
     parse_jobs_json,
     parse_run_jsonl,
+    parse_run_jsonl_text,
 )
 from trajectory_monitor.scorer import score_job, score_all
 from trajectory_monitor.signals import (
@@ -132,6 +133,22 @@ class TestParser:
         entries = parse_run_jsonl(run_file)
         # Should only get "finished" entries
         assert len(entries) == 6  # 3 healthy + 3 crashing
+
+    def test_parse_run_jsonl_text_default_job_and_summary_fallback(self):
+        text = "\n".join([
+            json.dumps({
+                "ts": 1000,
+                "action": "finished",
+                "status": "ok",
+                "durationMs": 1000,
+                "result": {"summary": "Fallback summary from result"},
+            }),
+            json.dumps({"ts": 2000, "action": "started", "status": "ok"}),
+        ])
+        entries = parse_run_jsonl_text(text, default_job_id="session-123")
+        assert len(entries) == 1
+        assert entries[0].job_id == "session-123"
+        assert entries[0].summary == "Fallback summary from result"
 
     def test_build_job_states(self, tmp_workspace):
         jobs = build_job_states(
