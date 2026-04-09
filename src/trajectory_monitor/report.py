@@ -8,6 +8,10 @@ from datetime import datetime, timezone
 from .parser import JobState
 from .scorer import QualityScore, score_all
 from .signals import Severity, analyze_all
+from .recommendations import (
+    format_recommendations_report,
+    recommendations_to_json,
+)
 
 
 def _severity_icon(sev: Severity) -> str:
@@ -79,6 +83,11 @@ def generate_terminal_report(jobs: list[JobState]) -> str:
                         lines.append(f"    ↳ {comp}: {val:.0f}")
         lines.append("")
 
+    # Recommendations
+    recs_section = format_recommendations_report(signals_by_job)
+    if recs_section:
+        lines.append(recs_section)
+
     lines.append("=" * 60)
     return "\n".join(lines)
 
@@ -124,5 +133,8 @@ def generate_json_report(jobs: list[JobState]) -> str:
                 ],
             }
         )
+
+    # Add recommendations
+    report["recommendations"] = recommendations_to_json(signals_by_job)
 
     return json.dumps(report, indent=2, ensure_ascii=False)

@@ -9,9 +9,10 @@ import pytest
 from trajectory_monitor.parser import JobState, RunEntry
 from trajectory_monitor.mcp_server import (
     analyze_jobs,
-    check_job,
-    get_score,
     analyze_session,
+    check_job,
+    get_recommendations,
+    get_score,
     list_signals,
 )
 
@@ -162,6 +163,41 @@ class TestGetScore:
         assert "error" in data
 
 
+# ── get_recommendations ──────────────────────────────────────────
+
+
+class TestGetRecommendations:
+    def test_get_recommendations_existing_job(self, tmp_workspace):
+        result = get_recommendations(
+            job_name="crashing-job",
+            jobs_json_path=str(tmp_workspace / "jobs.json"),
+            runs_dir=str(tmp_workspace / "runs"),
+        )
+        data = json.loads(result)
+        assert data["job"] == "crashing-job"
+        assert data["score"] < 50
+        assert len(data["recommendations"]) >= 1
+        assert any(r["signal_kind"] == "crash_repeat" for r in data["recommendations"])
+
+    def test_get_recommendations_all_jobs(self, tmp_workspace):
+        result = get_recommendations(
+            jobs_json_path=str(tmp_workspace / "jobs.json"),
+            runs_dir=str(tmp_workspace / "runs"),
+        )
+        data = json.loads(result)
+        assert data["count"] >= 1
+        assert "crashing-job" in data["jobs"]
+        assert "healthy-job" not in data["jobs"]
+
+    def test_get_recommendations_nonexistent_job(self, tmp_workspace):
+        result = get_recommendations(
+            job_name="ghost-job",
+            jobs_json_path=str(tmp_workspace / "jobs.json"),
+        )
+        data = json.loads(result)
+        assert "error" in data
+
+
 # ── analyze_session ───────────────────────────────────────────────
 
 
@@ -184,9 +220,12 @@ class TestAnalyzeSession:
         assert data["runs_analyzed"] == 3
         assert "score" in data
         assert "signals" in data
+        assert "recommendations" in data
         # Should detect feature_race with 3 consecutive feature adds
         signal_kinds = [s["kind"] for s in data["signals"]]
+        recommendation_kinds = [r["signal_kind"] for r in data["recommendations"]]
         assert "feature_race" in signal_kinds
+        assert "feature_race" in recommendation_kinds
 
     def test_analyze_session_from_file(self, tmp_path):
         jsonl_file = tmp_path / "session.jsonl"
@@ -224,7 +263,9 @@ class TestAnalyzeSession:
         data = json.loads(result)
         assert data["errors"] == 3
         signal_kinds = [s["kind"] for s in data["signals"]]
+        recommendation_kinds = [r["signal_kind"] for r in data["recommendations"]]
         assert "crash_repeat" in signal_kinds
+        assert "crash_repeat" in recommendation_kinds
 
 
 # ── list_signals ──────────────────────────────────────────────────
@@ -235,8 +276,9 @@ class TestListSignals:
         result = list_signals()
         data = json.loads(result)
         assert "detectors" in data
-        assert data["count"] >= 7  # 7 detectors
+        assert data["count"] >= 8  # 8 detectors
         names = [d["name"] for d in data["detectors"]]
         assert "detect_crash_repeat" in names
         assert "detect_feature_race" in names
+        assert "detect_hallucination_pattern" in names
         assert "detect_loop" in names

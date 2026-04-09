@@ -89,11 +89,11 @@ Grades: A (≥90) / B (≥75) / C (≥60) / D (≥40) / F (<40)
 ```
 trajectory_monitor/
 ├── parser.py           # Parse jobs.json + JSONL run transcripts
-├── signals.py          # 8 anomaly detectors (crash_repeat, loop, stagnation, duration_spike, token_bloat, consecutive_errors, feature_race)
+├── signals.py          # 8 anomaly detectors (crash_repeat, loop, stagnation, duration_spike, token_bloat, consecutive_errors, feature_race, hallucination_pattern)
 ├── scorer.py        # Quality score (0-100) with breakdown
 ├── report.py           # Terminal + JSON output (with recommendations)
 ├── recommendations.py  # Actionable fix suggestions per signal type + severity
-├── mcp_server.py       # MCP tool functions (5 tools for agent self-inspection)
+├── mcp_server.py       # MCP tool functions (6 tools for agent self-inspection)
 └── cli.py              # CLI interface
 tools/
 └── analyze_openclaw.py # Forge-specific markdown report generator
@@ -102,7 +102,14 @@ tools/
 ## MCP Integration
 
 ```python
-from trajectory_monitor.mcp_server import analyze_jobs, check_job, get_score
+from trajectory_monitor.mcp_server import (
+    analyze_jobs,
+    analyze_session,
+    check_job,
+    get_recommendations,
+    get_score,
+    list_signals,
+)
 
 # Full analysis
 report_json = analyze_jobs(jobs_json_path="/path/to/jobs.json", runs_dir="/path/to/runs")
@@ -112,6 +119,16 @@ status = check_job(job_name="forge-imagine", jobs_json_path="/path/to/jobs.json"
 
 # Quick score
 score = get_score(job_name="forge-imagine", jobs_json_path="/path/to/jobs.json", runs_dir="/path/to/runs")
+
+# Actionable fix suggestions for one job or all failing jobs
+job_recs = get_recommendations(job_name="forge-imagine", jobs_json_path="/path/to/jobs.json", runs_dir="/path/to/runs")
+all_recs = get_recommendations(jobs_json_path="/path/to/jobs.json", runs_dir="/path/to/runs")
+
+# Self-inspect a JSONL transcript mid-session
+session_report = analyze_session(transcript_jsonl, job_name="live-session")
+
+# Discover available detectors
+signal_catalog = list_signals()
 ```
 
 ## Forge Report Tool

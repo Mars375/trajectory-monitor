@@ -4,7 +4,9 @@ Provides tools:
 - analyze_jobs: Full analysis of all cron jobs
 - check_job: Analyze a specific job by name
 - get_score: Get quality score for a job
+- get_recommendations: Get actionable fix suggestions for one or many jobs
 - analyze_session: Analyze a session transcript (text or path) for anomalies
+- list_signals: List all available signal detectors
 
 Run: python -m trajectory_monitor.mcp_server
     or: trajectory-monitor serve
@@ -18,10 +20,11 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from .parser import JobState, build_job_states, parse_jobs_json, load_all_runs
+from .parser import JobState, build_job_states
+from .recommendations import generate_recommendations
 from .report import generate_json_report
 from .scorer import score_job
-from .signals import Signal, Severity, analyze_job, analyze_all, DETECTORS
+from .signals import DETECTORS, analyze_job
 
 # ── Auto-detect paths ─────────────────────────────────────────────
 
@@ -52,6 +55,24 @@ def _find_runs_dir(path: str | None = None) -> str:
         if p.exists():
             return str(p)
     return ""
+
+
+def _signal_payload(signal) -> dict[str, object]:
+    return {
+        "kind": signal.kind,
+        "severity": signal.severity.value,
+        "message": signal.message,
+        "details": signal.details,
+    }
+
+
+def _recommendation_payload(rec) -> dict[str, str]:
+    return {
+        "priority": rec.priority,
+        "signal_kind": rec.signal_kind,
+        "action": rec.action,
+        "details": rec.details,
+    }
 
 
 # ── MCP Server ────────────────────────────────────────────────────
@@ -104,15 +125,7 @@ def check_job(job_name: str, jobs_json_path: str = "", runs_dir: str = "") -> st
                 "total_runs": job.total_runs,
                 "error_rate": round(job.error_rate, 2),
                 "consecutive_errors": job.consecutive_errors,
-                "signals": [
-                    {
-                        "kind": s.kind,
-                        "severity": s.severity.value,
-                        "message": s.message,
-                        "details": s.details,
-                    }
-                    for s in signals
-                ],
+                "signals": [_signal_payload(s) for s in signals],
                 "breakdown": score.breakdown,
             }, indent=2, ensure_ascii=False)
     return json.dumps({"error": f"Job '{job_name}' not found"})
@@ -143,6 +156,57 @@ def get_score(job_name: str, jobs_json_path: str = "", runs_dir: str = "") -> st
                 "breakdown": {k: round(v, 1) for k, v in score.breakdown.items()},
             }, indent=2)
     return json.dumps({"error": f"Job '{job_name}' not found"})
+
+
+@mcp.tool()
+def get_recommendations(job_name: str = "", jobs_json_path: str = "", runs_dir: str = "") -> str:
+    """Get actionable recommendations for one job or all jobs with issues.
+
+    Args:
+        job_name: Optional specific job to inspect. If omitted, returns all jobs with recommendations.
+        jobs_json_path: Path to jobs.json (auto-detected if omitted)
+        runs_dir: Path to runs/ directory (auto-detected if omitted)
+    """
+    jp = _find_jobs_json(jobs_json_path or None)
+    rd = _find_runs_dir(runs_dir or None)
+    if not jp or not Path(jp).exists():
+        return json.dumps({"error": f"jobs.json not found at {jp}"})
+
+    jobs = build_job_states(jp, rd)
+
+    if job_name:
+        for job in jobs:
+            if job.name == job_name:
+                signals = analyze_job(job)
+                recommendations = generate_recommendations(signals)
+                score = score_job(job)
+                return json.dumps({
+                    "job": job_name,
+                    "score": score.score,
+                    "grade": score.grade,
+                    "signals": [_signal_payload(s) for s in signals],
+                    "recommendations": [_recommendation_payload(r) for r in recommendations],
+                }, indent=2, ensure_ascii=False)
+        return json.dumps({"error": f"Job '{job_name}' not found"})
+
+    jobs_with_recommendations: dict[str, dict[str, object]] = {}
+    for job in jobs:
+        signals = analyze_job(job)
+        recommendations = generate_recommendations(signals)
+        if not recommendations:
+            continue
+        score = score_job(job)
+        jobs_with_recommendations[job.name] = {
+            "score": score.score,
+            "grade": score.grade,
+            "signal_count": len(signals),
+            "recommendations": [_recommendation_payload(r) for r in recommendations],
+        }
+
+    return json.dumps({
+        "jobs": jobs_with_recommendations,
+        "count": len(jobs_with_recommendations),
+    }, indent=2, ensure_ascii=False)
 
 
 @mcp.tool()
@@ -213,6 +277,7 @@ def analyze_session(transcript: str, job_name: str = "session") -> str:
     )
 
     signals = analyze_job(job)
+    recommendations = generate_recommendations(signals)
     score = score_job(job)
 
     return json.dumps({
@@ -221,15 +286,8 @@ def analyze_session(transcript: str, job_name: str = "session") -> str:
         "errors": len(job.error_runs),
         "score": score.score,
         "grade": score.grade,
-        "signals": [
-            {
-                "kind": s.kind,
-                "severity": s.severity.value,
-                "message": s.message,
-                "details": s.details,
-            }
-            for s in signals
-        ],
+        "signals": [_signal_payload(s) for s in signals],
+        "recommendations": [_recommendation_payload(r) for r in recommendations],
     }, indent=2, ensure_ascii=False)
 
 

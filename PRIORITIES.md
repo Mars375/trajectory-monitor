@@ -86,3 +86,38 @@ Exemples : forge-imagine re-crée PLAN.md/RESULT.md/TOOLS.md sur plusieurs runs,
 
 ### Next
 - V2 backlog: feature-race avancé, hallucination avec vérification filesystem intégrée au MCP, scoring par type de signal
+
+---
+
+## [x] P6 — Recommendations Engine ✅ (2026-04-09)
+**Objectif** : Générer des recommandations actionables à partir des signaux détectés.
+
+Implémenté :
+- `recommendations.py` : moteur de recommandations par type de signal + sévérité
+- 8 jeux de règles (1 par type de signal) avec context templates
+- Priorisation automatique (high/medium/low)
+- Intégration rapport terminal : section "📋 RECOMMENDATIONS"
+- Intégration rapport JSON : clé `recommendations` par job
+- 24 nouveaux tests unitaires (96 total, tous verts)
+
+Validé sur données réelles : 60 recommandations sur 34 jobs, couvrant 18 signaux critiques et 40 warnings.
+
+### Next
+- V2 backlog: MCP tool `get_recommendations`, trend analysis, JSONL transcript analysis
+
+
+## [x] P7 — MCP tool `get_recommendations` ✅ (2026-04-09)
+**Objectif** : Exposer les recommandations actionables directement via MCP pour l'auto-inspection agent.
+
+Implémenté :
+- `mcp_server.py` : nouveau tool `get_recommendations`
+  - mode job spécifique ou vue agrégée de tous les jobs avec recommandations
+  - retourne score, grade, signaux et suggestions JSON prêtes à consommer
+- `analyze_session` enrichi avec la clé `recommendations` pour l'auto-inspection live
+- README MCP mis à jour : 6 tools documentés
+- 3 nouveaux tests MCP + 2 assertions renforcées → **99 tests** au total, tous verts
+
+Validé sur données réelles : `get_recommendations(job_name="forge-chantier-trajectory-monitor")` remonte correctement `consecutive_errors` + `crash_repeat` avec 2 actions prioritaires.
+
+### Next
+- V2 backlog: trend analysis, JSONL transcript analysis, MCP live mode
