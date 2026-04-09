@@ -23,7 +23,7 @@ from mcp.server.fastmcp import FastMCP
 from .parser import JobState, build_job_states, parse_run_jsonl, parse_run_jsonl_text
 from .recommendations import generate_recommendations
 from .report import generate_json_report
-from .scorer import score_job
+from .scorer import analyze_trend, score_job, trend_to_dict
 from .signals import DETECTORS, analyze_job, check_file_existence
 
 # ── Auto-detect paths ─────────────────────────────────────────────
@@ -122,6 +122,7 @@ def check_job(job_name: str, jobs_json_path: str = "", runs_dir: str = "") -> st
                 "job": job_name,
                 "score": score.score,
                 "grade": score.grade,
+                "trend": trend_to_dict(analyze_trend(job)),
                 "total_runs": job.total_runs,
                 "error_rate": round(job.error_rate, 2),
                 "consecutive_errors": job.consecutive_errors,
@@ -153,6 +154,7 @@ def get_score(job_name: str, jobs_json_path: str = "", runs_dir: str = "") -> st
                 "job": job_name,
                 "score": score.score,
                 "grade": score.grade,
+                "trend": trend_to_dict(analyze_trend(job)),
                 "breakdown": {k: round(v, 1) for k, v in score.breakdown.items()},
             }, indent=2)
     return json.dumps({"error": f"Job '{job_name}' not found"})
@@ -184,6 +186,7 @@ def get_recommendations(job_name: str = "", jobs_json_path: str = "", runs_dir: 
                     "job": job_name,
                     "score": score.score,
                     "grade": score.grade,
+                    "trend": trend_to_dict(analyze_trend(job)),
                     "signals": [_signal_payload(s) for s in signals],
                     "recommendations": [_recommendation_payload(r) for r in recommendations],
                 }, indent=2, ensure_ascii=False)
@@ -199,6 +202,7 @@ def get_recommendations(job_name: str = "", jobs_json_path: str = "", runs_dir: 
         jobs_with_recommendations[job.name] = {
             "score": score.score,
             "grade": score.grade,
+            "trend": trend_to_dict(analyze_trend(job)),
             "signal_count": len(signals),
             "recommendations": [_recommendation_payload(r) for r in recommendations],
         }
@@ -273,6 +277,7 @@ def analyze_session(
         "errors": len(job.error_runs),
         "score": score.score,
         "grade": score.grade,
+        "trend": trend_to_dict(analyze_trend(job)),
         "workspace_check": workspace_check,
         "signals": [_signal_payload(s) for s in signals],
         "recommendations": [_recommendation_payload(r) for r in recommendations],

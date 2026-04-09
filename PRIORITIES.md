@@ -138,5 +138,20 @@ Validé :
 - `python -m pytest tests/ -x -q` → 101 passed
 - `analyze_session` sur le transcript réel du cron `forge-chantier-trajectory-monitor` → 26 runs analysés, `workspace_check` actif
 
+## [x] P9 — Trend analysis entre runs successifs ✅ (2026-04-09)
+**Objectif** : Détecter si un job s'améliore ou régresse entre deux fenêtres de runs, au lieu de ne regarder que l'état courant.
+
+Implémenté :
+- `scorer.py` : analyse de tendance basée sur les deux dernières fenêtres de runs (score delta, error-rate delta, dérive durée/tokens)
+- `report.py` : trend overview + colonne `Trend` dans les rapports terminal/JSON
+- `mcp_server.py` : `check_job`, `get_score`, `get_recommendations` et `analyze_session` exposent maintenant la tendance
+- `tools/analyze_openclaw.py` : rapport forge enrichi avec jobs regressing/improving
+- 6 nouveaux tests unitaires/MCP → **107 tests** au total, tous verts
+
+Validé :
+- `python -m pytest tests/ -x -q` → 107 passed
+- `python -m trajectory_monitor analyze /home/orion/.openclaw/cron/jobs.json --json` → trend counts OK sur 47 jobs
+- `python3 tools/analyze_openclaw.py` → rapport forge avec colonne Trend
+
 ### Next
-- V2 backlog: trend analysis, transcripts plus riches que les seuls événements `finished`, MCP live mode
+- V2 backlog: transcripts plus riches que les seuls événements `finished`, MCP live mode, trend alerts exploitables directement comme signal

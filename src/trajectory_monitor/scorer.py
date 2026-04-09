@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .parser import JobState
+from .parser import JobState, RunEntry
 from .signals import Signal, Severity, analyze_job
 
 
@@ -30,6 +30,21 @@ class QualityScore:
         elif self.score >= 40:
             return "D"
         return "F"
+
+
+@dataclass
+class QualityTrend:
+    """Comparison between the recent and previous windows of a job."""
+
+    direction: str
+    score_delta: int
+    previous_score: int | None
+    recent_score: int | None
+    previous_window: int
+    recent_window: int
+    error_rate_delta: float
+    duration_delta_pct: float | None = None
+    token_delta_pct: float | None = None
 
 
 def score_job(job: JobState, extra_signals: list[Signal] | None = None) -> QualityScore:
@@ -118,6 +133,108 @@ def score_job(job: JobState, extra_signals: list[Signal] | None = None) -> Quali
         critical_count=criticals,
         warning_count=warnings,
     )
+
+
+def _trailing_error_streak(runs: list[RunEntry]) -> int:
+    streak = 0
+    for run in reversed(runs):
+        if run.is_error:
+            streak += 1
+        else:
+            break
+    return streak
+
+
+def _window_job(job: JobState, runs: list[RunEntry]) -> JobState:
+    last = runs[-1] if runs else None
+    return JobState(
+        job_id=job.job_id,
+        name=job.name,
+        description=job.description,
+        enabled=job.enabled,
+        consecutive_errors=_trailing_error_streak(runs),
+        last_run_status=last.status if last else "",
+        last_duration_ms=last.duration_ms if last else 0,
+        runs=list(runs),
+    )
+
+
+def _avg(values: list[int]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def _pct_change(previous: float, current: float) -> float | None:
+    if previous <= 0:
+        return None
+    return ((current - previous) / previous) * 100
+
+
+def analyze_trend(job: JobState, window_size: int = 3) -> QualityTrend:
+    """Compare previous vs recent run windows to detect improvement or regression."""
+    window = min(window_size, len(job.runs) // 2)
+    if window < 2:
+        return QualityTrend(
+            direction="insufficient_data",
+            score_delta=0,
+            previous_score=None,
+            recent_score=None,
+            previous_window=window,
+            recent_window=window,
+            error_rate_delta=0.0,
+        )
+
+    previous_runs = job.runs[-window * 2:-window]
+    recent_runs = job.runs[-window:]
+
+    previous_job = _window_job(job, previous_runs)
+    recent_job = _window_job(job, recent_runs)
+
+    previous_score = score_job(previous_job)
+    recent_score = score_job(recent_job)
+    score_delta = recent_score.score - previous_score.score
+    error_rate_delta = round(recent_job.error_rate - previous_job.error_rate, 2)
+
+    previous_durations = [r.duration_ms for r in previous_runs if r.duration_ms > 0]
+    recent_durations = [r.duration_ms for r in recent_runs if r.duration_ms > 0]
+    previous_tokens = [r.total_tokens for r in previous_runs if r.total_tokens > 0]
+    recent_tokens = [r.total_tokens for r in recent_runs if r.total_tokens > 0]
+
+    duration_delta_pct = _pct_change(_avg(previous_durations), _avg(recent_durations))
+    token_delta_pct = _pct_change(_avg(previous_tokens), _avg(recent_tokens))
+
+    if score_delta >= 8 or error_rate_delta <= -0.25:
+        direction = "improving"
+    elif score_delta <= -8 or error_rate_delta >= 0.25:
+        direction = "regressing"
+    else:
+        direction = "stable"
+
+    return QualityTrend(
+        direction=direction,
+        score_delta=score_delta,
+        previous_score=previous_score.score,
+        recent_score=recent_score.score,
+        previous_window=window,
+        recent_window=window,
+        error_rate_delta=error_rate_delta,
+        duration_delta_pct=duration_delta_pct,
+        token_delta_pct=token_delta_pct,
+    )
+
+
+def trend_to_dict(trend: QualityTrend) -> dict[str, object]:
+    """Serialize a QualityTrend for JSON/MCP output."""
+    return {
+        "direction": trend.direction,
+        "score_delta": trend.score_delta,
+        "previous_score": trend.previous_score,
+        "recent_score": trend.recent_score,
+        "previous_window": trend.previous_window,
+        "recent_window": trend.recent_window,
+        "error_rate_delta": round(trend.error_rate_delta, 2),
+        "duration_delta_pct": None if trend.duration_delta_pct is None else round(trend.duration_delta_pct, 1),
+        "token_delta_pct": None if trend.token_delta_pct is None else round(trend.token_delta_pct, 1),
+    }
 
 
 def score_all(jobs: list[JobState]) -> list[QualityScore]:

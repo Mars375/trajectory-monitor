@@ -35,14 +35,15 @@ python -m trajectory_monitor.cli analyze --json
   Jobs analyzed: 44
   Total signals: 39 (7 critical, 30 warnings)
   Average quality score: 58/100
+  Trend overview: 6 regressing, 11 improving
 
 ────────────────────────────────────────────────────────────
-  Job                                 Score Grade Signals
+  Job                           Score Grade   Trend Signals
 ────────────────────────────────────────────────────────────
-  forge-imagine                          17     F       1
-  forge-chantier-memos                   64     C       1
-  forge-chantier-mcp-audit               75     B       0
-  forge-scout-needs                      74     C       0
+  forge-imagine                    17     F       ·       1
+  forge-chantier-memos             64     C       ↗       1
+  forge-chantier-mcp-audit         75     B       →       0
+  forge-scout-needs                74     C       ↘       0
   ...
 
   SIGNALS DETECTED
@@ -84,13 +85,23 @@ Composite score with components:
 
 Grades: A (≥90) / B (≥75) / C (≥60) / D (≥40) / F (<40)
 
+## Trend Analysis
+
+Each job also gets a lightweight trend verdict based on the last two run windows:
+- **↗ improving**: recent runs are materially healthier than the previous window
+- **→ stable**: no strong movement detected
+- **↘ regressing**: recent runs are clearly worse than the previous window
+- **· n/a**: not enough history yet
+
+The JSON and MCP payloads expose `trend.direction`, `score_delta`, `error_rate_delta`, and duration/token deltas so other agents can react before a job fully crashes.
+
 ## Architecture
 
 ```
 trajectory_monitor/
 ├── parser.py           # Parse jobs.json + JSONL run transcripts
 ├── signals.py          # 8 anomaly detectors (crash_repeat, loop, stagnation, duration_spike, token_bloat, consecutive_errors, feature_race, hallucination_pattern)
-├── scorer.py        # Quality score (0-100) with breakdown
+├── scorer.py        # Quality score (0-100) + trend analysis between run windows
 ├── report.py           # Terminal + JSON output (with recommendations)
 ├── recommendations.py  # Actionable fix suggestions per signal type + severity
 ├── mcp_server.py       # MCP tool functions (6 tools for agent self-inspection)
