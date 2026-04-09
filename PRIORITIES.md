@@ -155,3 +155,23 @@ Validé :
 
 ### Next
 - V2 backlog: transcripts plus riches que les seuls événements `finished`, MCP live mode, trend alerts exploitables directement comme signal
+
+
+## [x] P10 — Regression-trend as Signal ✅ (2026-04-09)
+**Objectif** : Transformer les tendances de régression en Signaux à part entière avec recommandations.
+
+Implémenté :
+- `signals.py` : nouveau détecteur `detect_regression_trend`
+  - Lazy import depuis scorer.py pour éviter les imports circulaires
+  - Détecte les jobs en régression (direction == "regressing")
+  - Severity WARNING si score_delta > -20, CRITICAL si <= -20
+  - Détails : score_delta, previous/recent scores, error_rate_delta, duration/token changes
+- `recommendations.py` : règles de recommandation pour regression_trend (critical + warning)
+- Ajouté au registry DETECTORS (9 détecteurs au total)
+- 6 nouveaux tests unitaires (113 total, tous verts)
+
+Validé sur données réelles : 7 nouveaux signaux regression_trend détectés sur les 47 jobs OpenClaw.
+Exemples : forge-chantier-cron-ui (error rate +33%), orphan:2a20474b (score 17→0, duration +68%), orphan:87d94c48 (duration +343%).
+
+### Next
+- V2 backlog: MCP live mode, richer JSONL transcript parsing (tool-call level), weighted scoring per signal type
