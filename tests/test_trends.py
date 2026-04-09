@@ -147,3 +147,124 @@ def test_analyze_session_includes_trend():
 
     data = json.loads(analyze_session(transcript, job_name="trend-session"))
     assert data["trend"]["direction"] == "improving"
+
+
+# ── Regression-trend signal tests ──────────────────────────────
+
+from trajectory_monitor.signals import detect_regression_trend, analyze_job
+
+
+def test_regression_trend_signal_regressing():
+    """A regressing job should emit a regression_trend signal."""
+    job = JobState(
+        job_id="job-1",
+        name="regressing-job",
+        consecutive_errors=2,
+        last_run_status="error",
+        last_duration_ms=7000,
+        runs=[
+            _run(1000, "ok", summary="Validated parser with pytest", duration_ms=9000, total_tokens=450),
+            _run(2000, "ok", summary="Validated scoring and generated report", duration_ms=9500, total_tokens=470),
+            _run(3000, "error", error="Write to /tmp/a failed: permission denied", duration_ms=7000, total_tokens=300),
+            _run(4000, "error", error="Write to /tmp/b failed: permission denied", duration_ms=7200, total_tokens=320),
+        ],
+    )
+    signal = detect_regression_trend(job)
+    assert signal is not None
+    assert signal.kind == "regression_trend"
+    assert signal.severity.value in ("warning", "critical")
+    assert "Score dropping" in signal.message
+    assert signal.details["score_delta"] < 0
+
+
+def test_regression_trend_signal_improving_no_signal():
+    """An improving job should NOT emit a regression_trend signal."""
+    job = JobState(
+        job_id="job-1",
+        name="improving-job",
+        consecutive_errors=0,
+        last_run_status="ok",
+        last_duration_ms=9000,
+        runs=[
+            _run(1000, "error", error="Write failed", duration_ms=7000, total_tokens=300),
+            _run(2000, "error", error="Write failed", duration_ms=7200, total_tokens=320),
+            _run(3000, "ok", summary="Validated parser with pytest", duration_ms=9000, total_tokens=450),
+            _run(4000, "ok", summary="Validated scoring and generated report", duration_ms=9500, total_tokens=470),
+        ],
+    )
+    signal = detect_regression_trend(job)
+    assert signal is None
+
+
+def test_regression_trend_signal_insufficient_data():
+    """A job with too few runs should not emit a regression_trend signal."""
+    job = JobState(
+        job_id="job-1",
+        name="short-job",
+        runs=[
+            _run(1000, "ok", summary="Run 1"),
+            _run(2000, "ok", summary="Run 2"),
+        ],
+    )
+    signal = detect_regression_trend(job)
+    assert signal is None
+
+
+def test_regression_trend_signal_severity_critical():
+    """A sharp regression (score delta <= -20) should be CRITICAL."""
+    job = JobState(
+        job_id="job-1",
+        name="crash-job",
+        consecutive_errors=3,
+        last_run_status="error",
+        runs=[
+            _run(1000, "ok", summary="All tests pass", duration_ms=5000, total_tokens=400),
+            _run(2000, "ok", summary="Smoke test OK", duration_ms=5500, total_tokens=420),
+            _run(3000, "ok", summary="Smoke test OK", duration_ms=5300, total_tokens=410),
+            _run(4000, "error", error="fatal: out of memory", duration_ms=12000, total_tokens=800),
+            _run(5000, "error", error="fatal: out of memory", duration_ms=15000, total_tokens=900),
+            _run(6000, "error", error="fatal: out of memory", duration_ms=18000, total_tokens=1100),
+        ],
+    )
+    signal = detect_regression_trend(job)
+    assert signal is not None
+    assert signal.kind == "regression_trend"
+    assert signal.severity.value == "critical"
+
+
+def test_regression_trend_in_analyze_job():
+    """analyze_job should include regression_trend alongside other signals."""
+    job = JobState(
+        job_id="job-1",
+        name="multi-signal-job",
+        consecutive_errors=2,
+        last_run_status="error",
+        runs=[
+            _run(1000, "ok", summary="All good", duration_ms=5000, total_tokens=400),
+            _run(2000, "ok", summary="All good", duration_ms=5500, total_tokens=420),
+            _run(3000, "error", error="Write to /tmp/a failed: permission denied", duration_ms=7000, total_tokens=300),
+            _run(4000, "error", error="Write to /tmp/b failed: permission denied", duration_ms=7200, total_tokens=320),
+        ],
+    )
+    signals = analyze_job(job)
+    kinds = [s.kind for s in signals]
+    assert "regression_trend" in kinds
+    assert "consecutive_errors" in kinds
+
+
+def test_regression_trend_recommendation():
+    """A regression_trend signal should produce recommendations."""
+    from trajectory_monitor.recommendations import generate_recommendations
+    from trajectory_monitor.signals import Signal, Severity
+
+    signal = Signal(
+        kind="regression_trend",
+        severity=Severity.WARNING,
+        message="Score dropping: 65→50 (Δ-15)",
+        job_name="test-job",
+        details={"score_delta": -15, "previous_score": 65, "recent_score": 50, "window_size": 3},
+    )
+    recs = generate_recommendations([signal])
+    assert len(recs) >= 1
+    assert recs[0].signal_kind == "regression_trend"
+    assert "delta=-15" in recs[0].action or "regressing" in recs[0].action.lower()

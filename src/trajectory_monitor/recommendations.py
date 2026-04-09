@@ -137,6 +137,24 @@ _RULES: dict[str, dict] = {
             ),
         ],
     },
+    "regression_trend": {
+        "critical": [
+            (
+                "Job quality dropping sharply (delta={score_delta}) — investigate recent changes",
+                "Score dropped from {previous_score} to {recent_score} across the last {window_size} runs. "
+                "This is a strong regression signal. Check: recent prompt/code changes, "
+                "dependency updates, or environment shifts that may have introduced failures.",
+            ),
+        ],
+        "warning": [
+            (
+                "Job regressing (delta={score_delta}) — monitor closely",
+                "Score trending down from {previous_score} to {recent_score}. "
+                "If the next window also regresses, escalate to investigation. "
+                "Early intervention is cheaper than recovery.",
+            ),
+        ],
+    },
 }
 
 

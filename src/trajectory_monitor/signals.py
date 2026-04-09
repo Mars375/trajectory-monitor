@@ -7,6 +7,8 @@ Signals:
 4. DurationSpike — run duration suddenly 3x+ the average
 5. TokenBloat — output tokens spiraling upward across runs
 6. FeatureRace — multiple feature additions without intermediate validation
+7. HallucinationPattern — file references that don't exist or keep being re-created
+8. RegressionTrend — job quality regressing between run windows
 """
 
 from __future__ import annotations
@@ -438,6 +440,48 @@ def check_file_existence(
     return None
 
 
+# ── Regression-trend detector ────────────────────────────────────
+
+def detect_regression_trend(job: JobState) -> Signal | None:
+    """Detect quality regression between the two most recent run windows.
+
+    Uses the trend analyzer to compare previous vs recent runs.
+    A regressing trend is surfaced as a signal so it can generate
+    recommendations and be tracked alongside other anomalies.
+    """
+    from .scorer import analyze_trend  # lazy import to avoid circular
+
+    trend = analyze_trend(job)
+    if trend.direction != "regressing":
+        return None
+
+    parts = [f"Score dropping: {trend.previous_score}→{trend.recent_score} (Δ{trend.score_delta})"]
+    if trend.error_rate_delta > 0:
+        parts.append(f"error rate +{trend.error_rate_delta:.0%}")
+    if trend.duration_delta_pct is not None and trend.duration_delta_pct > 50:
+        parts.append(f"duration +{trend.duration_delta_pct:.0f}%")
+    if trend.token_delta_pct is not None and trend.token_delta_pct > 50:
+        parts.append(f"tokens +{trend.token_delta_pct:.0f}%")
+
+    severity = Severity.CRITICAL if trend.score_delta <= -20 else Severity.WARNING
+
+    return Signal(
+        kind="regression_trend",
+        severity=severity,
+        message="; ".join(parts),
+        job_name=job.name,
+        details={
+            "score_delta": trend.score_delta,
+            "previous_score": trend.previous_score,
+            "recent_score": trend.recent_score,
+            "error_rate_delta": trend.error_rate_delta,
+            "duration_delta_pct": trend.duration_delta_pct,
+            "token_delta_pct": trend.token_delta_pct,
+            "window_size": trend.recent_window,
+        },
+    )
+
+
 # Registry of all detectors
 DETECTORS = [
     detect_consecutive_errors,
@@ -448,6 +492,7 @@ DETECTORS = [
     detect_token_bloat,
     detect_feature_race,
     detect_hallucination_pattern,
+    detect_regression_trend,
 ]
 
 
