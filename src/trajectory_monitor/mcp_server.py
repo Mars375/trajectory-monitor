@@ -1,4 +1,4 @@
-"""MCP server for trajectory-monitor — agents can self-inspect.
+"""MCP server for trajectory-monitor, agents can self-inspect.
 
 Provides tools:
 - analyze_jobs: Full analysis of all cron jobs
@@ -26,12 +26,12 @@ from .scorer import (
     action_policy_to_dict,
     analyze_trend,
     build_action_policy,
+    policy_thresholds_to_dict,
+    resolve_policy_thresholds,
     score_job,
     trend_to_dict,
 )
 from .signals import DETECTORS, analyze_job, check_file_existence
-
-# ── Auto-detect paths ─────────────────────────────────────────────
 
 _DEFAULT_PATHS = [
     Path.home() / ".openclaw" / "cron" / "jobs.json",
@@ -89,7 +89,12 @@ def _path_exists(value: str) -> bool:
         return False
 
 
-# ── MCP Server ────────────────────────────────────────────────────
+def _load_policy_thresholds(policy_config: str = ""):
+    try:
+        return resolve_policy_thresholds(policy_config)
+    except ValueError as exc:
+        raise ValueError(f"Invalid policy_config: {exc}") from exc
+
 
 mcp = FastMCP(
     "trajectory-monitor",
@@ -98,30 +103,42 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-def analyze_jobs(jobs_json_path: str = "", runs_dir: str = "") -> str:
+def analyze_jobs(jobs_json_path: str = "", runs_dir: str = "", policy_config: str = "") -> str:
     """Full analysis of all cron jobs. Returns JSON report with scores and signals.
 
     Args:
         jobs_json_path: Path to jobs.json (auto-detected if omitted)
         runs_dir: Path to runs/ directory (auto-detected if omitted)
+        policy_config: Optional JSON string or file path overriding action policy thresholds
     """
+    try:
+        policy_thresholds = _load_policy_thresholds(policy_config)
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)})
+
     jp = _find_jobs_json(jobs_json_path or None)
     rd = _find_runs_dir(runs_dir or None)
     if not jp or not Path(jp).exists():
         return json.dumps({"error": f"jobs.json not found at {jp}"})
     jobs = build_job_states(jp, rd)
-    return generate_json_report(jobs)
+    return generate_json_report(jobs, policy_thresholds=policy_thresholds)
 
 
 @mcp.tool()
-def check_job(job_name: str, jobs_json_path: str = "", runs_dir: str = "") -> str:
+def check_job(job_name: str, jobs_json_path: str = "", runs_dir: str = "", policy_config: str = "") -> str:
     """Analyze a specific cron job by name. Returns signals and quality score.
 
     Args:
         job_name: Name of the job to analyze
         jobs_json_path: Path to jobs.json (auto-detected if omitted)
         runs_dir: Path to runs/ directory (auto-detected if omitted)
+        policy_config: Optional JSON string or file path overriding action policy thresholds
     """
+    try:
+        policy_thresholds = _load_policy_thresholds(policy_config)
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)})
+
     jp = _find_jobs_json(jobs_json_path or None)
     rd = _find_runs_dir(runs_dir or None)
     if not jp or not Path(jp).exists():
@@ -133,32 +150,49 @@ def check_job(job_name: str, jobs_json_path: str = "", runs_dir: str = "") -> st
             signals = analyze_job(job)
             score = score_job(job)
             trend = analyze_trend(job)
-            policy = build_action_policy(job, score=score, signals=signals, trend=trend)
-            return json.dumps({
-                "job": job_name,
-                "score": score.score,
-                "grade": score.grade,
-                "trend": trend_to_dict(trend),
-                "action_policy": action_policy_to_dict(policy),
-                "total_runs": job.total_runs,
-                "error_rate": round(job.error_rate, 2),
-                "consecutive_errors": job.consecutive_errors,
-                "signals": [_signal_payload(s) for s in signals],
-                "breakdown": score.breakdown,
-                "signal_penalties": {k: round(v, 1) for k, v in score.signal_penalties.items()},
-            }, indent=2, ensure_ascii=False)
+            policy = build_action_policy(
+                job,
+                score=score,
+                signals=signals,
+                trend=trend,
+                thresholds=policy_thresholds,
+            )
+            return json.dumps(
+                {
+                    "job": job_name,
+                    "score": score.score,
+                    "grade": score.grade,
+                    "trend": trend_to_dict(trend),
+                    "policy_thresholds": policy_thresholds_to_dict(policy_thresholds),
+                    "action_policy": action_policy_to_dict(policy),
+                    "total_runs": job.total_runs,
+                    "error_rate": round(job.error_rate, 2),
+                    "consecutive_errors": job.consecutive_errors,
+                    "signals": [_signal_payload(s) for s in signals],
+                    "breakdown": score.breakdown,
+                    "signal_penalties": {k: round(v, 1) for k, v in score.signal_penalties.items()},
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
     return json.dumps({"error": f"Job '{job_name}' not found"})
 
 
 @mcp.tool()
-def get_score(job_name: str, jobs_json_path: str = "", runs_dir: str = "") -> str:
+def get_score(job_name: str, jobs_json_path: str = "", runs_dir: str = "", policy_config: str = "") -> str:
     """Get quality score for a specific job. Returns score (0-100), grade, and breakdown.
 
     Args:
         job_name: Name of the job to score
         jobs_json_path: Path to jobs.json (auto-detected if omitted)
         runs_dir: Path to runs/ directory (auto-detected if omitted)
+        policy_config: Optional JSON string or file path overriding action policy thresholds
     """
+    try:
+        policy_thresholds = _load_policy_thresholds(policy_config)
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)})
+
     jp = _find_jobs_json(jobs_json_path or None)
     rd = _find_runs_dir(runs_dir or None)
     if not jp or not Path(jp).exists():
@@ -169,28 +203,43 @@ def get_score(job_name: str, jobs_json_path: str = "", runs_dir: str = "") -> st
         if job.name == job_name:
             score = score_job(job)
             trend = analyze_trend(job)
-            policy = build_action_policy(job, score=score, trend=trend)
-            return json.dumps({
-                "job": job_name,
-                "score": score.score,
-                "grade": score.grade,
-                "trend": trend_to_dict(trend),
-                "action_policy": action_policy_to_dict(policy),
-                "breakdown": {k: round(v, 1) for k, v in score.breakdown.items()},
-                "signal_penalties": {k: round(v, 1) for k, v in score.signal_penalties.items()},
-            }, indent=2)
+            policy = build_action_policy(job, score=score, trend=trend, thresholds=policy_thresholds)
+            return json.dumps(
+                {
+                    "job": job_name,
+                    "score": score.score,
+                    "grade": score.grade,
+                    "trend": trend_to_dict(trend),
+                    "policy_thresholds": policy_thresholds_to_dict(policy_thresholds),
+                    "action_policy": action_policy_to_dict(policy),
+                    "breakdown": {k: round(v, 1) for k, v in score.breakdown.items()},
+                    "signal_penalties": {k: round(v, 1) for k, v in score.signal_penalties.items()},
+                },
+                indent=2,
+            )
     return json.dumps({"error": f"Job '{job_name}' not found"})
 
 
 @mcp.tool()
-def get_recommendations(job_name: str = "", jobs_json_path: str = "", runs_dir: str = "") -> str:
+def get_recommendations(
+    job_name: str = "",
+    jobs_json_path: str = "",
+    runs_dir: str = "",
+    policy_config: str = "",
+) -> str:
     """Get actionable recommendations for one job or all jobs with issues.
 
     Args:
         job_name: Optional specific job to inspect. If omitted, returns all jobs with recommendations.
         jobs_json_path: Path to jobs.json (auto-detected if omitted)
         runs_dir: Path to runs/ directory (auto-detected if omitted)
+        policy_config: Optional JSON string or file path overriding action policy thresholds
     """
+    try:
+        policy_thresholds = _load_policy_thresholds(policy_config)
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)})
+
     jp = _find_jobs_json(jobs_json_path or None)
     rd = _find_runs_dir(runs_dir or None)
     if not jp or not Path(jp).exists():
@@ -205,16 +254,27 @@ def get_recommendations(job_name: str = "", jobs_json_path: str = "", runs_dir: 
                 recommendations = generate_recommendations(signals)
                 score = score_job(job)
                 trend = analyze_trend(job)
-                policy = build_action_policy(job, score=score, signals=signals, trend=trend)
-                return json.dumps({
-                    "job": job_name,
-                    "score": score.score,
-                    "grade": score.grade,
-                    "trend": trend_to_dict(trend),
-                    "action_policy": action_policy_to_dict(policy),
-                    "signals": [_signal_payload(s) for s in signals],
-                    "recommendations": [_recommendation_payload(r) for r in recommendations],
-                }, indent=2, ensure_ascii=False)
+                policy = build_action_policy(
+                    job,
+                    score=score,
+                    signals=signals,
+                    trend=trend,
+                    thresholds=policy_thresholds,
+                )
+                return json.dumps(
+                    {
+                        "job": job_name,
+                        "score": score.score,
+                        "grade": score.grade,
+                        "trend": trend_to_dict(trend),
+                        "policy_thresholds": policy_thresholds_to_dict(policy_thresholds),
+                        "action_policy": action_policy_to_dict(policy),
+                        "signals": [_signal_payload(s) for s in signals],
+                        "recommendations": [_recommendation_payload(r) for r in recommendations],
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                )
         return json.dumps({"error": f"Job '{job_name}' not found"})
 
     jobs_with_recommendations: dict[str, dict[str, object]] = {}
@@ -225,7 +285,13 @@ def get_recommendations(job_name: str = "", jobs_json_path: str = "", runs_dir: 
             continue
         score = score_job(job)
         trend = analyze_trend(job)
-        policy = build_action_policy(job, score=score, signals=signals, trend=trend)
+        policy = build_action_policy(
+            job,
+            score=score,
+            signals=signals,
+            trend=trend,
+            thresholds=policy_thresholds,
+        )
         jobs_with_recommendations[job.name] = {
             "score": score.score,
             "grade": score.grade,
@@ -235,10 +301,15 @@ def get_recommendations(job_name: str = "", jobs_json_path: str = "", runs_dir: 
             "recommendations": [_recommendation_payload(r) for r in recommendations],
         }
 
-    return json.dumps({
-        "jobs": jobs_with_recommendations,
-        "count": len(jobs_with_recommendations),
-    }, indent=2, ensure_ascii=False)
+    return json.dumps(
+        {
+            "policy_thresholds": policy_thresholds_to_dict(policy_thresholds),
+            "jobs": jobs_with_recommendations,
+            "count": len(jobs_with_recommendations),
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
 
 
 @mcp.tool()
@@ -246,6 +317,7 @@ def analyze_session(
     transcript: str,
     job_name: str = "session",
     workspace_path: str = "",
+    policy_config: str = "",
 ) -> str:
     """Analyze a session transcript (JSONL, markdown, or transcript file) for anomalies.
 
@@ -254,10 +326,16 @@ def analyze_session(
     actually exist on disk.
 
     Args:
-        transcript: Session transcript — raw JSONL, markdown/text, or a path to a transcript file
+        transcript: Session transcript, raw JSONL, markdown/text, or a path to a transcript file
         job_name: Name for this session (default: "session")
         workspace_path: Optional workspace root for filesystem-aware hallucination checks
+        policy_config: Optional JSON string or file path overriding action policy thresholds
     """
+    try:
+        policy_thresholds = _load_policy_thresholds(policy_config)
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)})
+
     source = transcript.strip()
     workspace = workspace_path.strip()
 
@@ -269,10 +347,12 @@ def analyze_session(
         runs = parse_transcript_text(source, default_job_id=job_name)
 
     if not runs:
-        return json.dumps({
-            "error": "No valid transcript entries found",
-            "hint": "Provide OpenClaw JSONL finished entries or markdown/text action lines",
-        })
+        return json.dumps(
+            {
+                "error": "No valid transcript entries found",
+                "hint": "Provide OpenClaw JSONL finished entries or markdown/text action lines",
+            }
+        )
 
     job = JobState(
         job_id=job_name,
@@ -296,21 +376,32 @@ def analyze_session(
     recommendations = generate_recommendations(signals)
     score = score_job(job, extra_signals=extra_signals)
     trend = analyze_trend(job)
-    policy = build_action_policy(job, score=score, signals=signals, trend=trend)
+    policy = build_action_policy(
+        job,
+        score=score,
+        signals=signals,
+        trend=trend,
+        thresholds=policy_thresholds,
+    )
 
-    return json.dumps({
-        "session": job_name,
-        "runs_analyzed": len(runs),
-        "errors": len(job.error_runs),
-        "score": score.score,
-        "grade": score.grade,
-        "trend": trend_to_dict(trend),
-        "action_policy": action_policy_to_dict(policy),
-        "workspace_check": workspace_check,
-        "signal_penalties": {k: round(v, 1) for k, v in score.signal_penalties.items()},
-        "signals": [_signal_payload(s) for s in signals],
-        "recommendations": [_recommendation_payload(r) for r in recommendations],
-    }, indent=2, ensure_ascii=False)
+    return json.dumps(
+        {
+            "session": job_name,
+            "runs_analyzed": len(runs),
+            "errors": len(job.error_runs),
+            "score": score.score,
+            "grade": score.grade,
+            "trend": trend_to_dict(trend),
+            "policy_thresholds": policy_thresholds_to_dict(policy_thresholds),
+            "action_policy": action_policy_to_dict(policy),
+            "workspace_check": workspace_check,
+            "signal_penalties": {k: round(v, 1) for k, v in score.signal_penalties.items()},
+            "signals": [_signal_payload(s) for s in signals],
+            "recommendations": [_recommendation_payload(r) for r in recommendations],
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
 
 
 @mcp.tool()
@@ -318,14 +409,19 @@ def list_signals() -> str:
     """List all available signal detectors and their descriptions."""
     detector_info = []
     for det in DETECTORS:
-        detector_info.append({
-            "name": det.__name__,
-            "description": det.__doc__.strip().split("\n")[0] if det.__doc__ else "",
-        })
-    return json.dumps({
-        "detectors": detector_info,
-        "count": len(detector_info),
-    }, indent=2)
+        detector_info.append(
+            {
+                "name": det.__name__,
+                "description": det.__doc__.strip().split("\n")[0] if det.__doc__ else "",
+            }
+        )
+    return json.dumps(
+        {
+            "detectors": detector_info,
+            "count": len(detector_info),
+        },
+        indent=2,
+    )
 
 
 def main_serve() -> None:

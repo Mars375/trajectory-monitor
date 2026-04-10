@@ -313,3 +313,43 @@ def test_generate_json_report_includes_action_policy():
     assert report["summary"]["policy_counts"]["normal"] == 1
     assert report["jobs"][0]["action_policy"]["mode"] == "normal"
     assert report["jobs"][0]["action_policy"]["feature_delivery_allowed"] is True
+
+
+
+def test_build_action_policy_respects_custom_thresholds():
+    from trajectory_monitor.scorer import build_action_policy, score_job
+
+    job = JobState(
+        job_id='job-1',
+        name='policy-threshold-job',
+        enabled=False,
+        last_run_status='ok',
+        runs=[_run(1000, 'ok', summary='Smoke test OK')],
+    )
+
+    score = score_job(job)
+    default_policy = build_action_policy(job, score=score)
+    custom_policy = build_action_policy(
+        job,
+        score=score,
+        thresholds={'stabilize_score_below': 50},
+    )
+
+    assert score.score == 55
+    assert default_policy.mode == 'stabilize'
+    assert custom_policy.mode == 'normal'
+    assert custom_policy.thresholds['stabilize_score_below'] == 50
+
+
+def test_generate_json_report_includes_policy_thresholds_config():
+    job = JobState(
+        job_id='job-1',
+        name='policy-json',
+        enabled=True,
+        last_run_status='ok',
+        runs=[_run(1000, 'ok', summary='Smoke test OK')],
+    )
+
+    report = json.loads(generate_json_report([job], policy_thresholds={'watch_penalty_at': 99}))
+    assert report['summary']['policy_thresholds']['watch_penalty_at'] == 99.0
+    assert report['jobs'][0]['action_policy']['thresholds']['watch_penalty_at'] == 99.0

@@ -379,3 +379,29 @@ class TestActionPolicy:
         data = json.loads(result)
         assert data["action_policy"]["mode"] == "bugfix_only"
         assert data["action_policy"]["should_alert"] is True
+
+
+
+def test_get_score_accepts_policy_config_json(tmp_workspace):
+    result = get_score(
+        job_name='healthy-job',
+        jobs_json_path=str(tmp_workspace / 'jobs.json'),
+        runs_dir=str(tmp_workspace / 'runs'),
+        policy_config='{"stabilize_score_below": 85}',
+    )
+    data = json.loads(result)
+    assert data['policy_thresholds']['stabilize_score_below'] == 85
+    assert data['action_policy']['mode'] == 'stabilize'
+    assert data['action_policy']['thresholds']['stabilize_score_below'] == 85
+
+
+def test_get_score_invalid_policy_config_returns_error(tmp_workspace):
+    result = get_score(
+        job_name='healthy-job',
+        jobs_json_path=str(tmp_workspace / 'jobs.json'),
+        runs_dir=str(tmp_workspace / 'runs'),
+        policy_config='not-json',
+    )
+    data = json.loads(result)
+    assert 'error' in data
+    assert 'policy_config' in data['error']

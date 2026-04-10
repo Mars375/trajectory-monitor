@@ -231,5 +231,44 @@ Les sorties JSON et MCP exposent :
 - `action_policy.should_alert`
 - `action_policy.max_new_features`
 - `action_policy.reasons`
+- `action_policy.thresholds`
 
 Ça permet à un autre agent de décider immédiatement s’il peut continuer à builder ou s’il doit passer en mode bugfix-only.
+
+### Seuils d’action policy configurables
+
+Les seuils peuvent maintenant être fournis depuis l’extérieur, soit comme JSON inline, soit comme chemin vers un fichier JSON.
+
+Exemple fichier `policy.json` :
+
+```json
+{
+  "stop_score_below": 35,
+  "stabilize_score_below": 55,
+  "watch_penalty_at": 16
+}
+```
+
+CLI :
+
+```bash
+python -m trajectory_monitor analyze /home/orion/.openclaw/cron/jobs.json   --json   --policy-config policy.json
+```
+
+MCP :
+
+```python
+get_score(
+    job_name="forge-chantier-trajectory-monitor",
+    policy_config='{"stabilize_score_below": 70, "watch_penalty_at": 16}'
+)
+```
+
+Champs supportés :
+- `stop_score_below`
+- `stabilize_score_below`
+- `stop_penalty_at`
+- `stabilize_penalty_at`
+- `watch_penalty_at`
+- `stop_consecutive_errors`
+- `watch_warning_count`

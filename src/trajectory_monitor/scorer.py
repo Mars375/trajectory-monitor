@@ -1,8 +1,10 @@
-"""Session quality scorer — produces a 0-100 score per job."""
+"""Session quality scorer, produces a 0-100 score per job."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 from .parser import JobState, RunEntry
 from .signals import Signal, Severity, analyze_job
@@ -13,8 +15,8 @@ class QualityScore:
     """Quality score for a single job."""
 
     job_name: str
-    score: int  # 0-100
-    breakdown: dict[str, float]  # component scores
+    score: int
+    breakdown: dict[str, float]
     signals_count: int
     critical_count: int
     warning_count: int
@@ -48,6 +50,49 @@ class QualityTrend:
     token_delta_pct: float | None = None
 
 
+@dataclass(frozen=True)
+class PolicyThresholds:
+    """Configurable thresholds driving action policy decisions."""
+
+    stop_score_below: int = 40
+    stabilize_score_below: int = 60
+    stop_penalty_at: float = 35.0
+    stabilize_penalty_at: float = 20.0
+    watch_penalty_at: float = 12.0
+    stop_consecutive_errors: int = 2
+    watch_warning_count: int = 2
+
+    @classmethod
+    def from_mapping(cls, data: dict[str, object]) -> "PolicyThresholds":
+        defaults = cls()
+        allowed = set(policy_thresholds_to_dict(defaults))
+        unknown = sorted(set(data) - allowed)
+        if unknown:
+            raise ValueError(f"Unknown policy threshold keys: {', '.join(unknown)}")
+
+        def _read_int(key: str) -> int:
+            value = data.get(key, getattr(defaults, key))
+            if not isinstance(value, (int, float)):
+                raise ValueError(f"Policy threshold '{key}' must be numeric")
+            return int(value)
+
+        def _read_float(key: str) -> float:
+            value = data.get(key, getattr(defaults, key))
+            if not isinstance(value, (int, float)):
+                raise ValueError(f"Policy threshold '{key}' must be numeric")
+            return float(value)
+
+        return cls(
+            stop_score_below=_read_int("stop_score_below"),
+            stabilize_score_below=_read_int("stabilize_score_below"),
+            stop_penalty_at=_read_float("stop_penalty_at"),
+            stabilize_penalty_at=_read_float("stabilize_penalty_at"),
+            watch_penalty_at=_read_float("watch_penalty_at"),
+            stop_consecutive_errors=_read_int("stop_consecutive_errors"),
+            watch_warning_count=_read_int("watch_warning_count"),
+        )
+
+
 @dataclass
 class ActionPolicy:
     """Operational policy derived from score, signals, and trend."""
@@ -59,6 +104,7 @@ class ActionPolicy:
     validation_required: bool
     max_new_features: int
     reasons: list[str]
+    thresholds: dict[str, int | float]
 
 
 _BASE_SIGNAL_PENALTIES = {
@@ -78,6 +124,48 @@ _SIGNAL_KIND_WEIGHTS = {
     "token_bloat": 0.7,
     "stagnation": 0.5,
 }
+
+
+def policy_thresholds_to_dict(thresholds: PolicyThresholds) -> dict[str, int | float]:
+    """Serialize policy thresholds for JSON/MCP output."""
+    return asdict(thresholds)
+
+
+def _path_string_exists(value: str) -> bool:
+    if not value or "\n" in value or "\r" in value:
+        return False
+    try:
+        return Path(value).expanduser().exists()
+    except OSError:
+        return False
+
+
+def resolve_policy_thresholds(
+    source: PolicyThresholds | dict[str, object] | str | None = None,
+) -> PolicyThresholds:
+    """Resolve policy thresholds from defaults, mapping, JSON string, or JSON file path."""
+    if source is None or source == "":
+        return PolicyThresholds()
+    if isinstance(source, PolicyThresholds):
+        return source
+    if isinstance(source, dict):
+        return PolicyThresholds.from_mapping(source)
+    if not isinstance(source, str):
+        raise ValueError("policy thresholds must be a dict, JSON string, or file path")
+
+    raw = source.strip()
+    if not raw:
+        return PolicyThresholds()
+    if _path_string_exists(raw):
+        raw = Path(raw).expanduser().read_text()
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid policy threshold JSON: {exc.msg}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("policy thresholds JSON must decode to an object")
+    return PolicyThresholds.from_mapping(data)
 
 
 def _score_signal_penalties(signals: list[Signal]) -> tuple[float, dict[str, float]]:
@@ -102,15 +190,12 @@ def score_job(job: JobState, extra_signals: list[Signal] | None = None) -> Quali
         signals = [*signals, *extra_signals]
     breakdown: dict[str, float] = {}
 
-    # 1. Error rate (0-30 points, penalized by error rate)
     if job.total_runs > 0:
         error_rate = job.error_rate
         breakdown["reliability"] = 30 * (1 - error_rate)
     else:
-        # No runs = no data = neutral
         breakdown["reliability"] = 15.0
 
-    # 2. Consecutive errors penalty
     if job.consecutive_errors >= 3:
         breakdown["consecutive_penalty"] = -20
     elif job.consecutive_errors >= 2:
@@ -120,7 +205,6 @@ def score_job(job: JobState, extra_signals: list[Signal] | None = None) -> Quali
     else:
         breakdown["consecutive_penalty"] = 0
 
-    # 3. Activity score (0-20 points)
     if job.total_runs >= 5:
         breakdown["activity"] = 20.0
     elif job.total_runs >= 2:
@@ -130,27 +214,23 @@ def score_job(job: JobState, extra_signals: list[Signal] | None = None) -> Quali
     else:
         breakdown["activity"] = 0.0
 
-    # 4. Duration consistency (0-20 points)
     durations = [r.duration_ms for r in job.runs if r.duration_ms > 0]
     if len(durations) >= 2:
         avg = sum(durations) / len(durations)
         if avg > 0:
             variance = sum((d - avg) ** 2 for d in durations) / len(durations)
-            cv = (variance**0.5) / avg  # coefficient of variation
+            cv = (variance**0.5) / avg
             breakdown["consistency"] = max(0, 20 * (1 - cv))
         else:
             breakdown["consistency"] = 10.0
     else:
         breakdown["consistency"] = 10.0
 
-    # 5. Signal penalty (weighted by signal type + severity)
     signal_penalty, signal_penalties = _score_signal_penalties(signals)
     breakdown["signal_penalty"] = -signal_penalty
 
-    # 6. Enabled bonus
     breakdown["enabled"] = 10.0 if job.enabled else 0.0
 
-    # 7. Recovery bonus: had errors but last run OK
     if job.runs and job.consecutive_errors == 0:
         had_errors = any(r.is_error for r in job.runs)
         if had_errors:
@@ -289,22 +369,24 @@ def build_action_policy(
     score: QualityScore | None = None,
     signals: list[Signal] | None = None,
     trend: QualityTrend | None = None,
+    thresholds: PolicyThresholds | dict[str, object] | str | None = None,
 ) -> ActionPolicy:
-    """Derive an operational policy from score, signals, and trend."""
+    """Derive an operational policy from score, signals, trend, and optional thresholds."""
     signals = list(signals) if signals is not None else analyze_job(job)
     score = score or score_job(job)
     trend = trend or analyze_trend(job)
+    resolved_thresholds = resolve_policy_thresholds(thresholds)
 
     total_penalty = round(sum(score.signal_penalties.values()), 1)
     critical_kinds = {s.kind for s in signals if s.severity == Severity.CRITICAL}
     warning_kinds = {s.kind for s in signals if s.severity == Severity.WARNING}
     reasons: list[str] = []
 
-    if job.consecutive_errors >= 2:
+    if job.consecutive_errors >= resolved_thresholds.stop_consecutive_errors:
         _add_reason(reasons, f"{job.consecutive_errors} consecutive errors")
-    if score.score < 40:
+    if score.score < resolved_thresholds.stop_score_below:
         _add_reason(reasons, f"score {score.score}/100")
-    if total_penalty >= 35:
+    if total_penalty >= resolved_thresholds.stop_penalty_at:
         _add_reason(reasons, f"heavy signal penalties ({total_penalty})")
     if trend.direction == "regressing":
         _add_reason(reasons, f"regressing trend (Δ{trend.score_delta})")
@@ -321,9 +403,9 @@ def build_action_policy(
         _add_reason(reasons, "critical regression trend")
 
     stop_conditions = [
-        job.consecutive_errors >= 2,
-        score.score < 40,
-        total_penalty >= 35,
+        job.consecutive_errors >= resolved_thresholds.stop_consecutive_errors,
+        score.score < resolved_thresholds.stop_score_below,
+        total_penalty >= resolved_thresholds.stop_penalty_at,
         "crash_repeat" in critical_kinds,
         "consecutive_errors" in critical_kinds,
         "hallucination_pattern" in critical_kinds,
@@ -332,13 +414,13 @@ def build_action_policy(
     stabilize_conditions = [
         trend.direction == "regressing",
         score.critical_count >= 1,
-        total_penalty >= 20,
-        score.score < 60,
+        total_penalty >= resolved_thresholds.stabilize_penalty_at,
+        score.score < resolved_thresholds.stabilize_score_below,
         "regression_trend" in critical_kinds,
     ]
     watch_conditions = [
-        score.warning_count >= 2,
-        total_penalty >= 12,
+        score.warning_count >= resolved_thresholds.watch_warning_count,
+        total_penalty >= resolved_thresholds.watch_penalty_at,
         bool(warning_kinds & {"loop", "token_bloat", "duration_spike", "stagnation"}),
     ]
 
@@ -349,7 +431,7 @@ def build_action_policy(
         should_alert = True
         max_new_features = 0
     elif any(stabilize_conditions):
-        if score.score < 60:
+        if score.score < resolved_thresholds.stabilize_score_below:
             _add_reason(reasons, f"score below safety margin ({score.score}/100)")
         mode = "stabilize"
         summary = "Prefer fixes and validation before shipping more changes."
@@ -357,9 +439,9 @@ def build_action_policy(
         should_alert = trend.direction == "regressing" or score.critical_count >= 1
         max_new_features = 0
     elif any(watch_conditions):
-        if score.warning_count >= 2:
+        if score.warning_count >= resolved_thresholds.watch_warning_count:
             _add_reason(reasons, f"{score.warning_count} warning signals")
-        if total_penalty >= 12:
+        if total_penalty >= resolved_thresholds.watch_penalty_at:
             _add_reason(reasons, f"moderate signal penalties ({total_penalty})")
         mode = "watch"
         summary = "Proceed carefully and validate after each increment."
@@ -382,6 +464,7 @@ def build_action_policy(
         validation_required=True,
         max_new_features=max_new_features,
         reasons=reasons,
+        thresholds=policy_thresholds_to_dict(resolved_thresholds),
     )
 
 
@@ -395,6 +478,7 @@ def action_policy_to_dict(policy: ActionPolicy) -> dict[str, object]:
         "validation_required": policy.validation_required,
         "max_new_features": policy.max_new_features,
         "reasons": policy.reasons,
+        "thresholds": policy.thresholds,
     }
 
 

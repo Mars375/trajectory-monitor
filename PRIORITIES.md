@@ -227,3 +227,21 @@ Validé :
 
 ### Next
 - V2 backlog: MCP live mode, parsing tool-call level encore plus riche, ou branchement des policies sur de vrais seuils d’alerte externes
+
+
+## [x] P14 — Configurable action policy thresholds ✅ (2026-04-10)
+**Objectif** : Brancher les `action_policy` sur de vrais seuils externes pour que les agents et crons puissent durcir ou assouplir la prise de décision sans re-coder la logique.
+
+Implémenté :
+- `scorer.py` : nouveau `PolicyThresholds` + résolution depuis dict, JSON inline ou fichier JSON
+- `cli.py` : flag `--policy-config` pour surcharger les seuils sans modifier le code
+- `mcp_server.py` : `analyze_jobs`, `check_job`, `get_score`, `get_recommendations` et `analyze_session` acceptent désormais `policy_config`
+- `report.py` : seuils actifs exposés dans le JSON et les payloads `action_policy`
+- 4 nouveaux tests ciblés pour les overrides et les erreurs de config
+
+Validé :
+- `python -m pytest tests/ -x -q` → 124 passed
+- `python -m trajectory_monitor analyze /home/orion/.openclaw/cron/jobs.json --json --policy-config <json|path>` → rapport OK avec `policy_thresholds`
+
+### Next
+- V2 backlog: MCP live mode, parsing tool-call level encore plus riche, ou politiques d’alerte branchées sur des destinations externes (webhook/notify) au-dessus des seuils déjà configurables
