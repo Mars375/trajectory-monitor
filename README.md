@@ -204,3 +204,22 @@ Each recommendation maps a signal type + severity to a specific action with cont
 - Python ≥ 3.10
 - No external dependencies (stdlib only)
 - pytest for tests
+
+## Action Policies
+
+En plus du score brut, chaque job expose maintenant une `action_policy` dérivée du risque réel :
+
+- **normal**: itération normale autorisée
+- **watch**: avancer prudemment, valider après chaque incrément
+- **stabilize**: privilégier fixes + validation avant toute nouvelle feature
+- **bugfix_only**: stop feature work, corriger puis revalider
+
+Les sorties JSON et MCP exposent :
+- `action_policy.mode`
+- `action_policy.summary`
+- `action_policy.feature_delivery_allowed`
+- `action_policy.should_alert`
+- `action_policy.max_new_features`
+- `action_policy.reasons`
+
+Ça permet à un autre agent de décider immédiatement s’il peut continuer à builder ou s’il doit passer en mode bugfix-only.

@@ -268,3 +268,48 @@ def test_regression_trend_recommendation():
     assert len(recs) >= 1
     assert recs[0].signal_kind == "regression_trend"
     assert "delta=-15" in recs[0].action or "regressing" in recs[0].action.lower()
+
+
+def test_build_action_policy_bugfix_only_for_crashing_job():
+    from trajectory_monitor.scorer import build_action_policy, score_job
+
+    job = JobState(
+        job_id="job-1",
+        name="policy-crash",
+        consecutive_errors=3,
+        last_run_status="error",
+        runs=[
+            _run(1000, "error", error="Write to /tmp/a failed: permission denied", duration_ms=7000, total_tokens=300),
+            _run(2000, "error", error="Write to /tmp/b failed: permission denied", duration_ms=7200, total_tokens=320),
+            _run(3000, "error", error="Write to /tmp/c failed: permission denied", duration_ms=7100, total_tokens=310),
+        ],
+    )
+
+    score = score_job(job)
+    policy = build_action_policy(job, score=score)
+
+    assert policy.mode == "bugfix_only"
+    assert policy.feature_delivery_allowed is False
+    assert policy.should_alert is True
+    assert any("consecutive errors" in reason for reason in policy.reasons)
+
+
+
+def test_generate_json_report_includes_action_policy():
+    job = JobState(
+        job_id="job-1",
+        name="policy-healthy",
+        consecutive_errors=0,
+        last_run_status="ok",
+        runs=[
+            _run(1000, "ok", summary="Validated parser with pytest", duration_ms=9000, total_tokens=450),
+            _run(2000, "ok", summary="Validated scoring and generated report", duration_ms=9500, total_tokens=470),
+            _run(3000, "ok", summary="Validated report formatting", duration_ms=9100, total_tokens=460),
+            _run(4000, "ok", summary="Validated MCP payloads", duration_ms=9050, total_tokens=455),
+        ],
+    )
+
+    report = json.loads(generate_json_report([job]))
+    assert report["summary"]["policy_counts"]["normal"] == 1
+    assert report["jobs"][0]["action_policy"]["mode"] == "normal"
+    assert report["jobs"][0]["action_policy"]["feature_delivery_allowed"] is True

@@ -322,3 +322,32 @@ class TestListSignals:
         assert "detect_feature_race" in names
         assert "detect_hallucination_pattern" in names
         assert "detect_loop" in names
+
+
+class TestActionPolicy:
+    def test_check_job_includes_action_policy(self, tmp_workspace):
+        result = check_job(
+            job_name="crashing-job",
+            jobs_json_path=str(tmp_workspace / "jobs.json"),
+            runs_dir=str(tmp_workspace / "runs"),
+        )
+        data = json.loads(result)
+        assert data["action_policy"]["mode"] == "bugfix_only"
+        assert data["action_policy"]["feature_delivery_allowed"] is False
+
+    def test_analyze_session_includes_action_policy(self):
+        transcript = "\n".join([
+            json.dumps({"ts": 1000, "jobId": "err", "action": "finished", "status": "error",
+                        "durationMs": 5000, "error": "Failed: timeout exceeded at step 100",
+                        "usage": {"input_tokens": 100, "output_tokens": 50, "total_tokens": 150}}),
+            json.dumps({"ts": 2000, "jobId": "err", "action": "finished", "status": "error",
+                        "durationMs": 6000, "error": "Failed: timeout exceeded at step 200",
+                        "usage": {"input_tokens": 120, "output_tokens": 60, "total_tokens": 180}}),
+            json.dumps({"ts": 3000, "jobId": "err", "action": "finished", "status": "error",
+                        "durationMs": 5500, "error": "Failed: timeout exceeded at step 300",
+                        "usage": {"input_tokens": 110, "output_tokens": 55, "total_tokens": 165}}),
+        ])
+        result = analyze_session(transcript, job_name="policy-error-session")
+        data = json.loads(result)
+        assert data["action_policy"]["mode"] == "bugfix_only"
+        assert data["action_policy"]["should_alert"] is True

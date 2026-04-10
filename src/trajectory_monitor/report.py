@@ -7,7 +7,13 @@ from datetime import datetime, timezone
 
 from .parser import JobState
 from .recommendations import format_recommendations_report, recommendations_to_json
-from .scorer import QualityScore, analyze_trend, score_all, trend_to_dict
+from .scorer import (
+    action_policy_to_dict,
+    analyze_trend,
+    build_action_policy,
+    score_all,
+    trend_to_dict,
+)
 from .signals import Severity, analyze_all
 
 
@@ -28,6 +34,18 @@ def _trend_icon(direction: str) -> str:
     }.get(direction, "?")
 
 
+def _count_policy_modes(policies: dict[str, object]) -> dict[str, int]:
+    counts = {
+        "normal": 0,
+        "watch": 0,
+        "stabilize": 0,
+        "bugfix_only": 0,
+    }
+    for policy in policies.values():
+        counts[policy.mode] = counts.get(policy.mode, 0) + 1
+    return counts
+
+
 def generate_terminal_report(jobs: list[JobState]) -> str:
     """Generate a human-readable terminal report."""
     lines: list[str] = []
@@ -38,7 +56,18 @@ def generate_terminal_report(jobs: list[JobState]) -> str:
 
     signals_by_job = analyze_all(jobs)
     scores = score_all(jobs)
+    score_by_name = {score.job_name: score for score in scores}
     trends_by_job = {job.name: analyze_trend(job) for job in jobs}
+    policies_by_job = {
+        job.name: build_action_policy(
+            job,
+            score=score_by_name[job.name],
+            signals=signals_by_job.get(job.name, []),
+            trend=trends_by_job[job.name],
+        )
+        for job in jobs
+    }
+    policy_counts = _count_policy_modes(policies_by_job)
 
     # Summary
     total_signals = sum(len(s) for s in signals_by_job.values())
@@ -53,6 +82,12 @@ def generate_terminal_report(jobs: list[JobState]) -> str:
     lines.append(f"  Total signals: {total_signals} ({critical} critical, {warnings} warnings)")
     lines.append(f"  Average quality score: {avg_score:.0f}/100")
     lines.append(f"  Trend overview: {regressing} regressing, {improving} improving")
+    lines.append(
+        "  Policy overview: "
+        f"{policy_counts['bugfix_only']} bugfix-only, "
+        f"{policy_counts['stabilize']} stabilize, "
+        f"{policy_counts['watch']} watch"
+    )
     lines.append("")
 
     # Score table
@@ -89,8 +124,14 @@ def generate_terminal_report(jobs: list[JobState]) -> str:
         lines.append("  " + "─" * 56)
         for s in worst:
             trend = trends_by_job.get(s.job_name)
+            policy = policies_by_job.get(s.job_name)
             trend_text = f", trend {trend.direction}" if trend and trend.direction != "insufficient_data" else ""
-            lines.append(f"  {s.job_name} — score {s.score}/100 (grade {s.grade}{trend_text})")
+            policy_text = f", policy {policy.mode}" if policy else ""
+            lines.append(f"  {s.job_name} — score {s.score}/100 (grade {s.grade}{trend_text}{policy_text})")
+            if policy and policy.reasons:
+                lines.append(f"    ↳ policy: {policy.summary}")
+                for reason in policy.reasons[:3]:
+                    lines.append(f"      - {reason}")
             if s.breakdown:
                 for comp, val in s.breakdown.items():
                     if val < 0:
@@ -106,11 +147,23 @@ def generate_terminal_report(jobs: list[JobState]) -> str:
     return "\n".join(lines)
 
 
+
 def generate_json_report(jobs: list[JobState]) -> str:
     """Generate a structured JSON report."""
     signals_by_job = analyze_all(jobs)
     scores = score_all(jobs)
     trends_by_job = {job.name: analyze_trend(job) for job in jobs}
+    score_by_name = {s.job_name: s for s in scores}
+    policies_by_job = {
+        job.name: build_action_policy(
+            job,
+            score=score_by_name[job.name],
+            signals=signals_by_job.get(job.name, []),
+            trend=trends_by_job[job.name],
+        )
+        for job in jobs
+    }
+    policy_counts = _count_policy_modes(policies_by_job)
 
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -127,11 +180,11 @@ def generate_json_report(jobs: list[JobState]) -> str:
                 "regressing": sum(1 for t in trends_by_job.values() if t.direction == "regressing"),
                 "insufficient_data": sum(1 for t in trends_by_job.values() if t.direction == "insufficient_data"),
             },
+            "policy_counts": policy_counts,
         },
         "jobs": [],
     }
 
-    score_by_name = {s.job_name: s for s in scores}
     for job in jobs:
         score = score_by_name[job.name]
         sigs = signals_by_job.get(job.name, [])
@@ -142,6 +195,7 @@ def generate_json_report(jobs: list[JobState]) -> str:
                 "grade": score.grade,
                 "signal_penalties": {k: round(v, 1) for k, v in score.signal_penalties.items()},
                 "trend": trend_to_dict(trends_by_job[job.name]),
+                "action_policy": action_policy_to_dict(policies_by_job[job.name]),
                 "total_runs": job.total_runs,
                 "error_rate": round(job.error_rate, 2),
                 "consecutive_errors": job.consecutive_errors,

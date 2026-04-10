@@ -193,3 +193,19 @@ Validé :
 
 ### Next
 - V2 backlog: parsing JSONL plus riche que les seuls événements `finished`, MCP live mode, alert thresholds/action policies basés sur les signaux pondérés
+
+## [x] P12 — Alert thresholds + action policies ✅ (2026-04-10)
+**Objectif** : Transformer score + signaux + tendance en décisions directement exploitables par les agents (`normal`, `watch`, `stabilize`, `bugfix_only`).
+
+Implémenté :
+- `scorer.py` : nouveau dérivé `ActionPolicy` avec règles basées sur `signal_penalties`, tendances et signaux critiques
+- `report.py` : `policy_counts` dans le JSON et politique visible dans les jobs à surveiller
+- `mcp_server.py` : `check_job`, `get_score`, `get_recommendations` et `analyze_session` exposent maintenant `action_policy`
+- 4 nouveaux tests ciblés → couverture des modes `bugfix_only` + JSON/MCP
+
+Validé :
+- les jobs en crash répété passent automatiquement en `bugfix_only`
+- les sorties JSON/MCP donnent maintenant un feu vert / orange / rouge exploitable sans re-coder la logique côté agent
+
+### Next
+- V2 backlog: parsing JSONL plus riche que les seuls événements `finished`, MCP live mode, action policies branchées sur de vrais seuils d’alerte externes

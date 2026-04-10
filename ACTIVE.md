@@ -3,47 +3,37 @@
 **Phase**: VEILLE
 **Repo**: https://github.com/Mars375/trajectory-monitor
 **Tag**: v0.2.0
-**Last validated**: 2026-04-09
+**Last validated**: 2026-04-10
 
-## État (updated 2026-04-09 18:58)
-- 101/101 tests passants
-- 8 détecteurs: crash_repeat, loop, stagnation, duration_spike, token_bloat, consecutive_errors, feature_race, hallucination_pattern
-- Score qualité 0-100 avec breakdown
+## État (updated 2026-04-10 03:07)
+- 118/118 tests passants
+- 9 détecteurs: crash_repeat, loop, stagnation, duration_spike, token_bloat, consecutive_errors, feature_race, hallucination_pattern, regression_trend
+- Score qualité 0-100 avec breakdown pondéré par type de signal
+- Trend analysis entre fenêtres de runs successifs
 - CLI + rapport terminal + JSON
 - MCP server (6 outils: analyze_jobs, check_job, get_score, get_recommendations, analyze_session, list_signals)
 - **tools/analyze_openclaw.py** : rapport forge-focused markdown
-- **Hallucination detector** : re-creation + burst + workspace existence check
 - **Recommendations engine** : suggestions actionables par signal type + sévérité
-- **🆕 MCP analyze_session workspace-aware** : parsing JSONL partagé + `workspace_path` pour vérifier les fichiers référencés sur disque
+- **MCP analyze_session workspace-aware** : parsing JSONL partagé + `workspace_path` pour vérifier les fichiers référencés sur disque
+- **🆕 Action policies** : `normal`, `watch`, `stabilize`, `bugfix_only` exposées dans JSON + MCP avec raisons, budget de nouvelles features et `policy_counts`
 
 ## Backlog V2 (quand activité reprend)
 - [ ] Intégration MCP live avec OpenClaw
-- [ ] Trend analysis (comparer scores entre runs successifs)
 - [ ] Analyse transcripts plus riches que les seuls événements `finished`
-- [ ] MCP live mode pour introspection en cours d'exécution
+- [ ] Brancher `action_policy` sur de vrais seuils d’alerte externes / automations
 
 ## Critères réouverture ACTIVE
 - Issue GitHub ouverte par communauté ou handler
 - Demande explicite d'évolution
 - Découverte de bug en production
 
-## Session 2026-04-09 02:47 — Recommendations Engine
-- **Nouveau module**: `recommendations.py` — moteur de recommandations actionables
-  - Mappe chaque type de signal + sévérité → actions spécifiques
-  - Contextuel: utilise les détails du signal (streak, ratio, growth_factor, etc.)
-  - Priorisation: high/medium/low triée automatiquement
-  - Intégré aux rapports terminal + JSON
-- **24 nouveaux tests** → 96 total (tous verts)
-- **Validation live**: 60 recommandations générées sur 34 jobs
-- **Données réelles**:
-  - Score moyen crons: 50/100
-  - 18 signaux critiques, 40 warnings
-  - Top problèmes: forge-imagine (1/100), forge-chantier-trajectory-monitor (10/100), forge-gate (19/100)
-- Phase: VEILLE — aucune issue GitHub, backlog V2 prêt
-
-## Session 2026-04-08 22:55 — P5 DONE
-- P1-P5: DONE ✅
-
+## Session 2026-04-10 03:07 — P12 DONE
+- `scorer.py` dérive maintenant une `action_policy` par job/session à partir du score pondéré, des signaux et de la tendance
+- Modes: `normal`, `watch`, `stabilize`, `bugfix_only`
+- `report.py` expose `policy_counts` en JSON et affiche la politique des jobs à surveiller
+- `mcp_server.py` expose `action_policy` dans `check_job`, `get_score`, `get_recommendations` et `analyze_session`
+- Validation: **118/118 tests verts**, CLI OK, `python3 -m trajectory_monitor analyze /home/orion/.openclaw/cron/jobs.json --json` OK, `python3 tools/analyze_openclaw.py` OK
+- Phase: VEILLE maintenue, prochain incrément utile = richer JSONL transcripts / MCP live / seuils d’alerte externes
 
 ## Session 2026-04-09 18:58 — MCP workspace-aware transcript analysis
 - `parser.py` factorisé avec `parse_run_jsonl_text()` pour partager le parsing entre fichiers et texte brut

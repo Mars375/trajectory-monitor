@@ -15,7 +15,6 @@ Run: python -m trajectory_monitor.mcp_server
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -23,7 +22,13 @@ from mcp.server.fastmcp import FastMCP
 from .parser import JobState, build_job_states, parse_run_jsonl, parse_run_jsonl_text
 from .recommendations import generate_recommendations
 from .report import generate_json_report
-from .scorer import analyze_trend, score_job, trend_to_dict
+from .scorer import (
+    action_policy_to_dict,
+    analyze_trend,
+    build_action_policy,
+    score_job,
+    trend_to_dict,
+)
 from .signals import DETECTORS, analyze_job, check_file_existence
 
 # ── Auto-detect paths ─────────────────────────────────────────────
@@ -118,11 +123,14 @@ def check_job(job_name: str, jobs_json_path: str = "", runs_dir: str = "") -> st
         if job.name == job_name:
             signals = analyze_job(job)
             score = score_job(job)
+            trend = analyze_trend(job)
+            policy = build_action_policy(job, score=score, signals=signals, trend=trend)
             return json.dumps({
                 "job": job_name,
                 "score": score.score,
                 "grade": score.grade,
-                "trend": trend_to_dict(analyze_trend(job)),
+                "trend": trend_to_dict(trend),
+                "action_policy": action_policy_to_dict(policy),
                 "total_runs": job.total_runs,
                 "error_rate": round(job.error_rate, 2),
                 "consecutive_errors": job.consecutive_errors,
@@ -151,11 +159,14 @@ def get_score(job_name: str, jobs_json_path: str = "", runs_dir: str = "") -> st
     for job in jobs:
         if job.name == job_name:
             score = score_job(job)
+            trend = analyze_trend(job)
+            policy = build_action_policy(job, score=score, trend=trend)
             return json.dumps({
                 "job": job_name,
                 "score": score.score,
                 "grade": score.grade,
-                "trend": trend_to_dict(analyze_trend(job)),
+                "trend": trend_to_dict(trend),
+                "action_policy": action_policy_to_dict(policy),
                 "breakdown": {k: round(v, 1) for k, v in score.breakdown.items()},
                 "signal_penalties": {k: round(v, 1) for k, v in score.signal_penalties.items()},
             }, indent=2)
@@ -184,11 +195,14 @@ def get_recommendations(job_name: str = "", jobs_json_path: str = "", runs_dir: 
                 signals = analyze_job(job)
                 recommendations = generate_recommendations(signals)
                 score = score_job(job)
+                trend = analyze_trend(job)
+                policy = build_action_policy(job, score=score, signals=signals, trend=trend)
                 return json.dumps({
                     "job": job_name,
                     "score": score.score,
                     "grade": score.grade,
-                    "trend": trend_to_dict(analyze_trend(job)),
+                    "trend": trend_to_dict(trend),
+                    "action_policy": action_policy_to_dict(policy),
                     "signals": [_signal_payload(s) for s in signals],
                     "recommendations": [_recommendation_payload(r) for r in recommendations],
                 }, indent=2, ensure_ascii=False)
@@ -201,10 +215,13 @@ def get_recommendations(job_name: str = "", jobs_json_path: str = "", runs_dir: 
         if not recommendations:
             continue
         score = score_job(job)
+        trend = analyze_trend(job)
+        policy = build_action_policy(job, score=score, signals=signals, trend=trend)
         jobs_with_recommendations[job.name] = {
             "score": score.score,
             "grade": score.grade,
-            "trend": trend_to_dict(analyze_trend(job)),
+            "trend": trend_to_dict(trend),
+            "action_policy": action_policy_to_dict(policy),
             "signal_count": len(signals),
             "recommendations": [_recommendation_payload(r) for r in recommendations],
         }
@@ -272,6 +289,8 @@ def analyze_session(
 
     recommendations = generate_recommendations(signals)
     score = score_job(job, extra_signals=extra_signals)
+    trend = analyze_trend(job)
+    policy = build_action_policy(job, score=score, signals=signals, trend=trend)
 
     return json.dumps({
         "session": job_name,
@@ -279,7 +298,8 @@ def analyze_session(
         "errors": len(job.error_runs),
         "score": score.score,
         "grade": score.grade,
-        "trend": trend_to_dict(analyze_trend(job)),
+        "trend": trend_to_dict(trend),
+        "action_policy": action_policy_to_dict(policy),
         "workspace_check": workspace_check,
         "signal_penalties": {k: round(v, 1) for k, v in score.signal_penalties.items()},
         "signals": [_signal_payload(s) for s in signals],

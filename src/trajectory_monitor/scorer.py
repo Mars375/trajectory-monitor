@@ -48,6 +48,19 @@ class QualityTrend:
     token_delta_pct: float | None = None
 
 
+@dataclass
+class ActionPolicy:
+    """Operational policy derived from score, signals, and trend."""
+
+    mode: str
+    summary: str
+    feature_delivery_allowed: bool
+    should_alert: bool
+    validation_required: bool
+    max_new_features: int
+    reasons: list[str]
+
+
 _BASE_SIGNAL_PENALTIES = {
     Severity.CRITICAL: 15.0,
     Severity.WARNING: 8.0,
@@ -263,6 +276,125 @@ def trend_to_dict(trend: QualityTrend) -> dict[str, object]:
         "error_rate_delta": round(trend.error_rate_delta, 2),
         "duration_delta_pct": None if trend.duration_delta_pct is None else round(trend.duration_delta_pct, 1),
         "token_delta_pct": None if trend.token_delta_pct is None else round(trend.token_delta_pct, 1),
+    }
+
+
+def _add_reason(reasons: list[str], message: str) -> None:
+    if message and message not in reasons:
+        reasons.append(message)
+
+
+def build_action_policy(
+    job: JobState,
+    score: QualityScore | None = None,
+    signals: list[Signal] | None = None,
+    trend: QualityTrend | None = None,
+) -> ActionPolicy:
+    """Derive an operational policy from score, signals, and trend."""
+    signals = list(signals) if signals is not None else analyze_job(job)
+    score = score or score_job(job)
+    trend = trend or analyze_trend(job)
+
+    total_penalty = round(sum(score.signal_penalties.values()), 1)
+    critical_kinds = {s.kind for s in signals if s.severity == Severity.CRITICAL}
+    warning_kinds = {s.kind for s in signals if s.severity == Severity.WARNING}
+    reasons: list[str] = []
+
+    if job.consecutive_errors >= 2:
+        _add_reason(reasons, f"{job.consecutive_errors} consecutive errors")
+    if score.score < 40:
+        _add_reason(reasons, f"score {score.score}/100")
+    if total_penalty >= 35:
+        _add_reason(reasons, f"heavy signal penalties ({total_penalty})")
+    if trend.direction == "regressing":
+        _add_reason(reasons, f"regressing trend (Δ{trend.score_delta})")
+
+    if "crash_repeat" in critical_kinds:
+        _add_reason(reasons, "repeated crash pattern")
+    if "consecutive_errors" in critical_kinds:
+        _add_reason(reasons, "critical consecutive error state")
+    if "hallucination_pattern" in critical_kinds:
+        _add_reason(reasons, "critical hallucination risk")
+    if "feature_race" in critical_kinds:
+        _add_reason(reasons, "feature race detected")
+    if "regression_trend" in critical_kinds:
+        _add_reason(reasons, "critical regression trend")
+
+    stop_conditions = [
+        job.consecutive_errors >= 2,
+        score.score < 40,
+        total_penalty >= 35,
+        "crash_repeat" in critical_kinds,
+        "consecutive_errors" in critical_kinds,
+        "hallucination_pattern" in critical_kinds,
+        "feature_race" in critical_kinds,
+    ]
+    stabilize_conditions = [
+        trend.direction == "regressing",
+        score.critical_count >= 1,
+        total_penalty >= 20,
+        score.score < 60,
+        "regression_trend" in critical_kinds,
+    ]
+    watch_conditions = [
+        score.warning_count >= 2,
+        total_penalty >= 12,
+        bool(warning_kinds & {"loop", "token_bloat", "duration_spike", "stagnation"}),
+    ]
+
+    if any(stop_conditions):
+        mode = "bugfix_only"
+        summary = "Stop feature work, fix failures, then rerun validation."
+        feature_delivery_allowed = False
+        should_alert = True
+        max_new_features = 0
+    elif any(stabilize_conditions):
+        if score.score < 60:
+            _add_reason(reasons, f"score below safety margin ({score.score}/100)")
+        mode = "stabilize"
+        summary = "Prefer fixes and validation before shipping more changes."
+        feature_delivery_allowed = False
+        should_alert = trend.direction == "regressing" or score.critical_count >= 1
+        max_new_features = 0
+    elif any(watch_conditions):
+        if score.warning_count >= 2:
+            _add_reason(reasons, f"{score.warning_count} warning signals")
+        if total_penalty >= 12:
+            _add_reason(reasons, f"moderate signal penalties ({total_penalty})")
+        mode = "watch"
+        summary = "Proceed carefully and validate after each increment."
+        feature_delivery_allowed = True
+        should_alert = False
+        max_new_features = 1
+    else:
+        _add_reason(reasons, "no blocking signals detected")
+        mode = "normal"
+        summary = "Healthy enough for normal iteration."
+        feature_delivery_allowed = True
+        should_alert = False
+        max_new_features = 3
+
+    return ActionPolicy(
+        mode=mode,
+        summary=summary,
+        feature_delivery_allowed=feature_delivery_allowed,
+        should_alert=should_alert,
+        validation_required=True,
+        max_new_features=max_new_features,
+        reasons=reasons,
+    )
+
+
+def action_policy_to_dict(policy: ActionPolicy) -> dict[str, object]:
+    """Serialize an ActionPolicy for JSON/MCP output."""
+    return {
+        "mode": policy.mode,
+        "summary": policy.summary,
+        "feature_delivery_allowed": policy.feature_delivery_allowed,
+        "should_alert": policy.should_alert,
+        "validation_required": policy.validation_required,
+        "max_new_features": policy.max_new_features,
+        "reasons": policy.reasons,
     }
 
 
