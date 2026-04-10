@@ -159,6 +159,20 @@ _MARKDOWN_ERROR_RE = re.compile(
     re.I,
 )
 
+_CODE_BLOCK_ACTION_RE = re.compile(
+    r"^(?:[$>#]\s*)?(?:python(?:3)?|pytest|uv|pip(?:3)?|poetry|tox|nox|"
+    r"git|bash|sh|make|npm|pnpm|yarn|cargo|go|docker(?:-compose)?|"
+    r"kubectl|curl|wget|gh|openclaw|cat|ls|find|mkdir|cp|mv|touch)\b",
+    re.I,
+)
+
+_CODE_BLOCK_RESULT_RE = re.compile(
+    r"\b(?:\d+\s+passed|\d+\s+failed|collected\s+\d+|traceback|assert|"
+    r"error|exception|warning|ok\b|timeout|timed out|permission denied|"
+    r"not found|no such file)\b",
+    re.I,
+)
+
 
 def _clean_markdown_line(line: str) -> str:
     text = line.strip()
@@ -169,6 +183,22 @@ def _clean_markdown_line(line: str) -> str:
     text = re.sub(r"[*_`]+", "", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip(" :-")
+
+
+def _clean_code_block_line(line: str) -> str:
+    text = line.strip()
+    text = re.sub(r"^(?:[$>#]|PS>)\s*", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _looks_like_code_block_run(line: str) -> bool:
+    text = line.strip()
+    if not text:
+        return False
+    if text.startswith(("diff --git", "@@", "+++", "---")):
+        return False
+    return bool(_CODE_BLOCK_ACTION_RE.search(text) or _CODE_BLOCK_RESULT_RE.search(text))
 
 
 def parse_markdown_transcript_text(text: str, default_job_id: str = "") -> list[RunEntry]:
@@ -189,13 +219,15 @@ def parse_markdown_transcript_text(text: str, default_job_id: str = "") -> list[
             in_code_block = not in_code_block
             continue
         if in_code_block:
-            continue
-        if stripped.startswith("#"):
-            continue
-        if re.fullmatch(r"[-=*_]{3,}", stripped):
-            continue
-
-        cleaned = _clean_markdown_line(stripped)
+            if not _looks_like_code_block_run(stripped):
+                continue
+            cleaned = _clean_code_block_line(stripped)
+        else:
+            if stripped.startswith("#"):
+                continue
+            if re.fullmatch(r"[-=*_]{3,}", stripped):
+                continue
+            cleaned = _clean_markdown_line(stripped)
         if not cleaned:
             continue
 

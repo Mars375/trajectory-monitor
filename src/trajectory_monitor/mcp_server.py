@@ -96,6 +96,16 @@ def _load_policy_thresholds(policy_config: str = ""):
         raise ValueError(f"Invalid policy_config: {exc}") from exc
 
 
+def _trailing_error_streak(runs) -> int:
+    streak = 0
+    for run in reversed(runs):
+        if run.is_error:
+            streak += 1
+        else:
+            break
+    return streak
+
+
 mcp = FastMCP(
     "trajectory-monitor",
     instructions="Analyze agent trajectories, detect anomalies, score quality.",
@@ -357,6 +367,9 @@ def analyze_session(
     job = JobState(
         job_id=job_name,
         name=job_name,
+        consecutive_errors=_trailing_error_streak(runs),
+        last_run_status=runs[-1].status if runs else "",
+        last_duration_ms=runs[-1].duration_ms if runs else 0,
         runs=runs,
     )
 

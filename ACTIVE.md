@@ -5,8 +5,8 @@
 **Tag**: v0.2.0
 **Last validated**: 2026-04-10
 
-## État (updated 2026-04-10 03:07)
-- 118/118 tests passants
+## État (updated 2026-04-10 13:08)
+- 128/128 tests passants
 - 9 détecteurs: crash_repeat, loop, stagnation, duration_spike, token_bloat, consecutive_errors, feature_race, hallucination_pattern, regression_trend
 - Score qualité 0-100 avec breakdown pondéré par type de signal
 - Trend analysis entre fenêtres de runs successifs
@@ -19,13 +19,20 @@
 
 ## Backlog V2 (quand activité reprend)
 - [ ] Intégration MCP live avec OpenClaw
-- [ ] Analyse transcripts plus riches que les seuls événements `finished`
+- [ ] Analyse JSONL/tool-call level plus riche que les seuls événements `finished`
 - [ ] Brancher `action_policy` sur de vrais seuils d’alerte externes / automations
 
 ## Critères réouverture ACTIVE
 - Issue GitHub ouverte par communauté ou handler
 - Demande explicite d'évolution
 - Découverte de bug en production
+
+## Session 2026-04-10 13:08 — P15 DONE
+- `parser.py` ingère maintenant les lignes utiles dans les blocs de code markdown quand elles ressemblent à de vraies commandes ou sorties de validation/erreur
+- `signals.py` supprime le faux `feature_race` sur les transcripts markdown-only dès qu’une validation existe quelque part dans la même recap
+- `mcp_server.py` dérive aussi `consecutive_errors` depuis les dernières lignes d’un transcript, ce qui rend `bugfix_only` cohérent même sans `jobs.json`
+- Validation: **128/128 tests verts**, CLI OK, analyse live `/home/orion/.openclaw/cron/jobs.json` OK, smoke `analyze_session()` markdown OK
+- Phase: VEILLE maintenue, prochain incrément utile = MCP live / vrai parsing tool-call level / alertes externes
 
 ## Session 2026-04-10 03:07 — P12 DONE
 - `scorer.py` dérive maintenant une `action_policy` par job/session à partir du score pondéré, des signaux et de la tendance

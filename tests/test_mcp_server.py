@@ -270,6 +270,39 @@ class TestAnalyzeSession:
         signal_kinds = [s["kind"] for s in data["signals"]]
         assert "crash_repeat" in signal_kinds
 
+    def test_analyze_session_markdown_code_block_validation_breaks_feature_race(self):
+        transcript = """# Session notes
+- Added parser support for markdown transcripts
+- Implemented MCP fallback for plain-text action logs
+- Built a richer transcript fallback module
+```bash
+python -m pytest -q
+12 passed
+```
+"""
+
+        result = analyze_session(transcript, job_name="markdown-session")
+        data = json.loads(result)
+
+        signal_kinds = [s["kind"] for s in data["signals"]]
+        assert "feature_race" not in signal_kinds
+
+    def test_analyze_session_markdown_code_block_errors_set_consecutive_errors(self):
+        transcript = """## Session log
+- Fixed parser edge case
+```text
+Timeout while writing ACTIVE.md
+Timeout while writing ACTIVE.md
+```
+"""
+
+        result = analyze_session(transcript, job_name="markdown-code-errors")
+        data = json.loads(result)
+
+        signal_kinds = [s["kind"] for s in data["signals"]]
+        assert "consecutive_errors" in signal_kinds
+        assert data["action_policy"]["mode"] == "bugfix_only"
+
     def test_analyze_session_with_workspace_check(self, tmp_path):
         workspace = tmp_path / "workspace"
         workspace.mkdir()

@@ -245,3 +245,22 @@ Validé :
 
 ### Next
 - V2 backlog: MCP live mode, parsing tool-call level encore plus riche, ou politiques d’alerte branchées sur des destinations externes (webhook/notify) au-dessus des seuils déjà configurables
+
+## [x] P15 — Markdown transcript parsing validation-aware ✅ (2026-04-10)
+**Objectif** : Fiabiliser `analyze_session` sur les recaps markdown réels, où la validation et les erreurs vivent souvent dans des blocs de code, sans déclencher de faux `feature_race`.
+
+Implémenté :
+- `parser.py` : ingestion des lignes utiles dans les fenced code blocks quand elles ressemblent à de vraies commandes/résultats (`pytest`, shell, `12 passed`, timeouts, etc.)
+- `mcp_server.py` : les transcripts calculent maintenant aussi un `consecutive_errors` implicite depuis les dernières lignes en erreur
+- `signals.py` : `feature_race` ignore désormais les transcripts markdown-only qui contiennent déjà une validation quelque part dans la même recap
+- README enrichi pour documenter cette heuristique
+- 4 tests ciblés supplémentaires (parser + MCP)
+
+Validé :
+- `python -m pytest tests/ -x -q` → 128 passed
+- `python -m trajectory_monitor --help` → OK
+- Smoke live OK sur `/home/orion/.openclaw/cron/jobs.json`
+- `analyze_session()` markdown : un bloc `pytest` supprime le faux `feature_race`, deux erreurs finales remontent `consecutive_errors` + `bugfix_only`
+
+### Next
+- V2 backlog: MCP live mode, parsing JSONL/tool-call level encore plus riche, ou politiques d’alerte branchées sur des destinations externes (webhook/notify)

@@ -207,7 +207,7 @@ Each recommendation maps a signal type + severity to a specific action with cont
 - Markdown/text transcripts with action/result bullets or plain lines
 - File paths to `.jsonl`, `.md`, `.markdown`, or `.txt` transcripts
 
-Markdown support is heuristic on purpose: each action/result line becomes a pseudo-run so the existing detectors can still spot loops, crash repeats, or feature races inside a human-written session recap.
+Markdown support is heuristic on purpose: each action/result line becomes a pseudo-run so the existing detectors can still spot loops, crash repeats, or feature races inside a human-written session recap. Meaningful fenced code-block lines are also ingested when they look like real commands or validation/error output (`pytest`, shell commands, `12 passed`, timeouts, etc.). For markdown-only transcripts, a validation line anywhere in the same recap now suppresses `feature_race`, which avoids false positives when one session summary lists several shipped changes and the validation command in one block.
 
 ## Requirements
 

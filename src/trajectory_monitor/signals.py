@@ -249,6 +249,11 @@ def detect_feature_race(job: JobState) -> Signal | None:
             streak_summaries = []
 
     if max_streak >= 3:
+        markdown_only = ok_runs and all(r.action == "transcript_line" for r in ok_runs)
+        has_validation_anywhere = any(_mentions_validation(run.summary) for run in ok_runs)
+        if markdown_only and has_validation_anywhere:
+            return None
+
         severity = Severity.CRITICAL if max_streak >= 5 else Severity.WARNING
         return Signal(
             kind="feature_race",

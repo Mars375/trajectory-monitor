@@ -13,6 +13,7 @@ from trajectory_monitor.parser import (
     parse_jobs_json,
     parse_run_jsonl,
     parse_run_jsonl_text,
+    parse_transcript_text,
 )
 from trajectory_monitor.scorer import score_job, score_all
 from trajectory_monitor.signals import (
@@ -166,6 +167,37 @@ class TestParser:
         assert crashing.total_runs == 3
         assert len(crashing.error_runs) == 3
         assert crashing.consecutive_errors == 3
+
+    def test_parse_markdown_transcript_keeps_validation_commands_in_code_blocks(self):
+        transcript = """# Session notes
+- Added parser support for markdown transcripts
+- Implemented MCP fallback for plain-text action logs
+- Built a richer transcript fallback module
+```bash
+python -m pytest -q
+12 passed
+```
+"""
+
+        entries = parse_transcript_text(transcript, default_job_id="markdown-session")
+
+        assert any("pytest" in entry.summary for entry in entries)
+        job = JobState(job_id="markdown-session", name="markdown-session", runs=entries)
+        assert detect_feature_race(job) is None
+
+    def test_parse_markdown_transcript_keeps_error_lines_in_code_blocks(self):
+        transcript = """## Session log
+- Fixed parser edge case
+```text
+Timeout while writing ACTIVE.md
+Timeout while writing ACTIVE.md
+```
+"""
+
+        entries = parse_transcript_text(transcript, default_job_id="markdown-errors")
+
+        assert len(entries) == 3
+        assert sum(1 for entry in entries if entry.is_error) == 2
 
 
 # ── Signal tests ──────────────────────────────────────────────────
