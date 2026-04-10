@@ -243,6 +243,33 @@ class TestAnalyzeSession:
         assert data["runs_analyzed"] == 4
         assert data["session"] == "file-session"
 
+    def test_analyze_session_from_markdown_text(self):
+        transcript = """# Session notes
+- Added parser support for markdown transcripts
+- Implemented MCP fallback for plain-text action logs
+- Built a richer transcript fallback module
+"""
+        result = analyze_session(transcript, job_name="markdown-session")
+        data = json.loads(result)
+        assert data["runs_analyzed"] == 3
+        signal_kinds = [s["kind"] for s in data["signals"]]
+        assert "feature_race" in signal_kinds
+
+    def test_analyze_session_from_markdown_file(self, tmp_path):
+        transcript_file = tmp_path / "session.md"
+        transcript_file.write_text("""## Session log
+- Fixed parser edge case
+- Timeout while writing ACTIVE.md
+- Timeout while writing ACTIVE.md
+""")
+
+        result = analyze_session(str(transcript_file), job_name="markdown-file-session")
+        data = json.loads(result)
+        assert data["runs_analyzed"] == 3
+        assert data["errors"] == 2
+        signal_kinds = [s["kind"] for s in data["signals"]]
+        assert "crash_repeat" in signal_kinds
+
     def test_analyze_session_with_workspace_check(self, tmp_path):
         workspace = tmp_path / "workspace"
         workspace.mkdir()
@@ -316,12 +343,13 @@ class TestListSignals:
         result = list_signals()
         data = json.loads(result)
         assert "detectors" in data
-        assert data["count"] >= 8  # 8 detectors
+        assert data["count"] >= 9  # 9 detectors
         names = [d["name"] for d in data["detectors"]]
         assert "detect_crash_repeat" in names
         assert "detect_feature_race" in names
         assert "detect_hallucination_pattern" in names
         assert "detect_loop" in names
+        assert "detect_regression_trend" in names
 
 
 class TestActionPolicy:

@@ -1,6 +1,6 @@
 # trajectory-monitor
 
-Analyse les trajectoires d'exécution des agents LLM — détecte les anomalies, score la qualité, expose une interface MCP.
+Analyse les trajectoires d'exécution des agents LLM — détecte les anomalies, score la qualité, et accepte aussi les transcripts JSONL ou markdown pour l'auto-inspection via MCP.
 
 ## Installation
 
@@ -72,6 +72,7 @@ python -m trajectory_monitor.cli analyze --json
 | **consecutive_errors** | Job has consecutiveErrors > 0 in state |
 | **feature_race** | 3+ consecutive feature-add runs without intermediate validation (🔴 ≥5x, ⚠️ 3x) |
 | **hallucination_pattern** | References to files/functions that don't exist (re-creation, burst, workspace check) |
+| **regression_trend** | Recent run window is materially worse than the previous one |
 
 ## Quality Score (0-100)
 
@@ -101,8 +102,8 @@ The JSON and MCP payloads expose `trend.direction`, `score_delta`, `error_rate_d
 
 ```
 trajectory_monitor/
-├── parser.py           # Parse jobs.json + JSONL run transcripts
-├── signals.py          # 8 anomaly detectors (crash_repeat, loop, stagnation, duration_spike, token_bloat, consecutive_errors, feature_race, hallucination_pattern)
+├── parser.py           # Parse jobs.json + transcript inputs (JSONL or markdown/text)
+├── signals.py          # 9 anomaly detectors (crash_repeat, loop, stagnation, duration_spike, token_bloat, consecutive_errors, feature_race, hallucination_pattern, regression_trend)
 ├── scorer.py        # Quality score (0-100) + trend analysis between run windows
 ├── report.py           # Terminal + JSON output (with recommendations)
 ├── recommendations.py  # Actionable fix suggestions per signal type + severity
@@ -137,9 +138,9 @@ score = get_score(job_name="forge-imagine", jobs_json_path="/path/to/jobs.json",
 job_recs = get_recommendations(job_name="forge-imagine", jobs_json_path="/path/to/jobs.json", runs_dir="/path/to/runs")
 all_recs = get_recommendations(jobs_json_path="/path/to/jobs.json", runs_dir="/path/to/runs")
 
-# Self-inspect a JSONL transcript mid-session
+# Self-inspect a JSONL or markdown transcript mid-session
 session_report = analyze_session(
-    transcript_jsonl,
+    transcript_text_or_path,
     job_name="live-session",
     workspace_path="/path/to/workspace",  # optional, enables missing-file checks
 )
@@ -198,6 +199,15 @@ Every analysis report includes an actionable **📋 RECOMMENDATIONS** section:
 ```
 
 Each recommendation maps a signal type + severity to a specific action with context from the signal data (error messages, streak counts, growth factors). Recommendations are sorted by priority (high → medium → low).
+
+## Transcript Inputs
+
+`analyze_session(...)` accepts:
+- OpenClaw JSONL with `action="finished"` entries
+- Markdown/text transcripts with action/result bullets or plain lines
+- File paths to `.jsonl`, `.md`, `.markdown`, or `.txt` transcripts
+
+Markdown support is heuristic on purpose: each action/result line becomes a pseudo-run so the existing detectors can still spot loops, crash repeats, or feature races inside a human-written session recap.
 
 ## Requirements
 

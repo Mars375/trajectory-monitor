@@ -19,7 +19,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from .parser import JobState, build_job_states, parse_run_jsonl, parse_run_jsonl_text
+from .parser import JobState, build_job_states, parse_transcript_file, parse_transcript_text
 from .recommendations import generate_recommendations
 from .report import generate_json_report
 from .scorer import (
@@ -78,6 +78,15 @@ def _recommendation_payload(rec) -> dict[str, str]:
         "action": rec.action,
         "details": rec.details,
     }
+
+
+def _path_exists(value: str) -> bool:
+    if not value or "\n" in value or "\r" in value:
+        return False
+    try:
+        return Path(value).exists()
+    except OSError:
+        return False
 
 
 # ── MCP Server ────────────────────────────────────────────────────
@@ -238,14 +247,14 @@ def analyze_session(
     job_name: str = "session",
     workspace_path: str = "",
 ) -> str:
-    """Analyze a session transcript (text or .jsonl path) for anomalies.
+    """Analyze a session transcript (JSONL, markdown, or transcript file) for anomalies.
 
-    Parses JSONL run data and runs all signal detectors.
+    Parses OpenClaw JSONL or markdown/text action logs and runs all signal detectors.
     If workspace_path is provided, also checks whether referenced files
     actually exist on disk.
 
     Args:
-        transcript: Session transcript — either a file path ending in .jsonl, or raw JSONL text (one JSON object per line)
+        transcript: Session transcript — raw JSONL, markdown/text, or a path to a transcript file
         job_name: Name for this session (default: "session")
         workspace_path: Optional workspace root for filesystem-aware hallucination checks
     """
@@ -254,18 +263,15 @@ def analyze_session(
 
     if not source:
         runs = []
-    elif not source.startswith("{") and Path(source).exists():
-        p = Path(source)
-        if p.suffix != ".jsonl":
-            return json.dumps({"error": f"File must be .jsonl, got {p.suffix}"})
-        runs = parse_run_jsonl(p)
+    elif _path_exists(source):
+        runs = parse_transcript_file(source)
     else:
-        runs = parse_run_jsonl_text(source, default_job_id=job_name)
+        runs = parse_transcript_text(source, default_job_id=job_name)
 
     if not runs:
         return json.dumps({
-            "error": "No valid run entries found in transcript",
-            "hint": "Provide JSONL with action=finished entries",
+            "error": "No valid transcript entries found",
+            "hint": "Provide OpenClaw JSONL finished entries or markdown/text action lines",
         })
 
     job = JobState(

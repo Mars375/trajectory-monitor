@@ -209,3 +209,21 @@ Validé :
 
 ### Next
 - V2 backlog: parsing JSONL plus riche que les seuls événements `finished`, MCP live mode, action policies branchées sur de vrais seuils d’alerte externes
+
+
+## [x] P13 — Markdown transcript support for analyze_session ✅ (2026-04-10)
+**Objectif** : Rendre l’auto-inspection MCP utile même quand l’agent ne fournit pas du JSONL OpenClaw brut, mais un transcript markdown/action-result plus humain.
+
+Implémenté :
+- `parser.py` : parsing auto-détecté `JSONL -> markdown/text` via `parse_transcript_text()` et `parse_transcript_file()`
+- Heuristique markdown légère : chaque ligne d’action/résultat devient un pseudo-run exploitable par les détecteurs existants
+- `mcp_server.py` : `analyze_session` accepte maintenant aussi les fichiers `.md`/`.txt` et le texte markdown brut
+- README mise à jour avec formats d’entrée supportés
+- 2 tests MCP supplémentaires ciblant markdown text/file + catalogue signaux renforcé
+
+Validé :
+- `python -m pytest tests/ -x -q` → 120 passed
+- `analyze_session()` détecte `feature_race` sur transcript markdown et `crash_repeat` sur fichier `.md`
+
+### Next
+- V2 backlog: MCP live mode, parsing tool-call level encore plus riche, ou branchement des policies sur de vrais seuils d’alerte externes

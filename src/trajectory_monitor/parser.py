@@ -1,8 +1,9 @@
-"""Parse OpenClaw cron data: jobs.json state + run transcripts (JSONL)."""
+"""Parse OpenClaw cron data: jobs.json state + run transcripts (JSONL/markdown)."""
 
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -150,6 +151,85 @@ def parse_run_jsonl_text(text: str, default_job_id: str = "") -> list[RunEntry]:
             entries.append(entry)
 
     return entries
+
+
+_MARKDOWN_ERROR_RE = re.compile(
+    r"\b(?:error|failed?|failure|exception|traceback|timeout|timed out|"
+    r"permission denied|not found|no such file|crash(?:ed)?|refused)\b",
+    re.I,
+)
+
+
+def _clean_markdown_line(line: str) -> str:
+    text = line.strip()
+    text = re.sub(r"^#{1,6}\s+", "", text)
+    text = re.sub(r"^>+\s*", "", text)
+    text = re.sub(r"^(?:[-*+]\s*)?\[[ xX]\]\s*", "", text)
+    text = re.sub(r"^(?:[-*+]\s+|\d+[.)]\s+)", "", text)
+    text = re.sub(r"[*_`]+", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip(" :-")
+
+
+def parse_markdown_transcript_text(text: str, default_job_id: str = "") -> list[RunEntry]:
+    """Parse markdown-ish action transcripts into pseudo-runs.
+
+    Heuristic: each non-empty bullet or paragraph line becomes a run-like entry,
+    which lets the existing signal detectors work on human-written summaries.
+    """
+    entries: list[RunEntry] = []
+    in_code_block = False
+    ts = 0
+
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
+        if stripped.startswith("#"):
+            continue
+        if re.fullmatch(r"[-=*_]{3,}", stripped):
+            continue
+
+        cleaned = _clean_markdown_line(stripped)
+        if not cleaned:
+            continue
+
+        ts += 1
+        is_error = bool(_MARKDOWN_ERROR_RE.search(cleaned))
+        entries.append(
+            RunEntry(
+                ts=ts,
+                job_id=default_job_id,
+                action="transcript_line",
+                status="error" if is_error else "ok",
+                duration_ms=0,
+                error=cleaned if is_error else "",
+                summary=cleaned,
+            )
+        )
+
+    return entries
+
+
+def parse_transcript_text(text: str, default_job_id: str = "") -> list[RunEntry]:
+    """Parse either OpenClaw JSONL or markdown/text transcripts."""
+    jsonl_entries = parse_run_jsonl_text(text, default_job_id=default_job_id)
+    if jsonl_entries:
+        return jsonl_entries
+    return parse_markdown_transcript_text(text, default_job_id=default_job_id)
+
+
+def parse_transcript_file(path: str | Path) -> list[RunEntry]:
+    """Parse a transcript file, auto-detecting JSONL vs markdown/text."""
+    p = Path(path)
+    if not p.exists():
+        return []
+    return parse_transcript_text(p.read_text(), default_job_id=p.stem)
 
 
 def parse_run_jsonl(path: str | Path) -> list[RunEntry]:
