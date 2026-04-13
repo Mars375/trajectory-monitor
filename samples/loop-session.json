@@ -1,0 +1,18 @@
+{
+  "sessionId": "sess-loop-001",
+  "agentId": "codex",
+  "startTime": "2026-04-12T11:00:00Z",
+  "endTime": "2026-04-12T11:10:00Z",
+  "status": "completed",
+  "events": [
+    { "timestamp": "2026-04-12T11:00:01Z", "type": "tool_call", "tool": "read", "args": { "path": "src/main.js" } },
+    { "timestamp": "2026-04-12T11:00:03Z", "type": "tool_result", "tool": "read", "output": "file contents..." },
+    { "timestamp": "2026-04-12T11:00:05Z", "type": "tool_call", "tool": "read", "args": { "path": "src/main.js" } },
+    { "timestamp": "2026-04-12T11:00:07Z", "type": "tool_result", "tool": "read", "output": "file contents..." },
+    { "timestamp": "2026-04-12T11:00:09Z", "type": "tool_call", "tool": "read", "args": { "path": "src/main.js" } },
+    { "timestamp": "2026-04-12T11:00:11Z", "type": "tool_result", "tool": "read", "output": "file contents..." },
+    { "timestamp": "2026-04-12T11:00:13Z", "type": "tool_call", "tool": "read", "args": { "path": "src/main.js" } },
+    { "timestamp": "2026-04-12T11:00:15Z", "type": "tool_result", "tool": "read", "output": "file contents..." },
+    { "timestamp": "2026-04-12T11:00:17Z", "type": "completion", "output": "I read the file" }
+  ]
+}

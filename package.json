@@ -1,0 +1,13 @@
+{
+  "name": "trajectory-monitor",
+  "version": "1.0.0",
+  "description": "Analyse agent execution trajectories for anomalies and session quality scoring",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "start": "node src/index.js"
+  },
+  "keywords": ["trajectory", "anomaly", "agent", "monitoring"],
+  "license": "MIT"
+}

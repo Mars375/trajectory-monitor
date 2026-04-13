@@ -1,0 +1,22 @@
+{
+  "sessionId": "sess-stagnation-001",
+  "agentId": "claude-code",
+  "startTime": "2026-04-12T12:00:00Z",
+  "endTime": "2026-04-12T12:30:00Z",
+  "status": "completed",
+  "events": [
+    { "timestamp": "2026-04-12T12:00:01Z", "type": "tool_call", "tool": "read", "args": { "path": "README.md" } },
+    { "timestamp": "2026-04-12T12:00:03Z", "type": "tool_result", "tool": "read", "output": "readme content" },
+    { "timestamp": "2026-04-12T12:00:10Z", "type": "tool_call", "tool": "exec", "args": { "command": "ls" } },
+    { "timestamp": "2026-04-12T12:00:11Z", "type": "tool_result", "tool": "exec", "output": "file1 file2" },
+    { "timestamp": "2026-04-12T12:05:00Z", "type": "tool_call", "tool": "exec", "args": { "command": "ls" } },
+    { "timestamp": "2026-04-12T12:05:01Z", "type": "tool_result", "tool": "exec", "output": "file1 file2" },
+    { "timestamp": "2026-04-12T12:10:00Z", "type": "tool_call", "tool": "exec", "args": { "command": "ls" } },
+    { "timestamp": "2026-04-12T12:10:01Z", "type": "tool_result", "tool": "exec", "output": "file1 file2" },
+    { "timestamp": "2026-04-12T12:15:00Z", "type": "tool_call", "tool": "exec", "args": { "command": "ls" } },
+    { "timestamp": "2026-04-12T12:15:01Z", "type": "tool_result", "tool": "exec", "output": "file1 file2" },
+    { "timestamp": "2026-04-12T12:20:00Z", "type": "tool_call", "tool": "exec", "args": { "command": "ls" } },
+    { "timestamp": "2026-04-12T12:20:01Z", "type": "tool_result", "tool": "exec", "output": "file1 file2" },
+    { "timestamp": "2026-04-12T12:25:00Z", "type": "completion", "output": "I looked at the files" }
+  ]
+}

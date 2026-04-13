@@ -1,0 +1,16 @@
+{
+  "sessionId": "sess-normal-001",
+  "agentId": "codex",
+  "startTime": "2026-04-12T10:00:00Z",
+  "endTime": "2026-04-12T10:05:00Z",
+  "status": "completed",
+  "events": [
+    { "timestamp": "2026-04-12T10:00:01Z", "type": "tool_call", "tool": "read", "args": { "path": "src/main.js" } },
+    { "timestamp": "2026-04-12T10:00:03Z", "type": "tool_result", "tool": "read", "output": "file contents..." },
+    { "timestamp": "2026-04-12T10:00:05Z", "type": "tool_call", "tool": "edit", "args": { "path": "src/main.js", "oldText": "bug", "newText": "fix" } },
+    { "timestamp": "2026-04-12T10:00:06Z", "type": "tool_result", "tool": "edit", "output": "ok" },
+    { "timestamp": "2026-04-12T10:00:08Z", "type": "tool_call", "tool": "exec", "args": { "command": "npm test" } },
+    { "timestamp": "2026-04-12T10:00:12Z", "type": "tool_result", "tool": "exec", "output": "3 tests passing" },
+    { "timestamp": "2026-04-12T10:00:13Z", "type": "completion", "output": "Fixed the bug in main.js" }
+  ]
+}

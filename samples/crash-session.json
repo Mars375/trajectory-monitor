@@ -1,0 +1,13 @@
+{
+  "sessionId": "sess-crash-001",
+  "agentId": "codex",
+  "startTime": "2026-04-12T13:00:00Z",
+  "endTime": null,
+  "status": "crashed",
+  "events": [
+    { "timestamp": "2026-04-12T13:00:01Z", "type": "tool_call", "tool": "read", "args": { "path": "src/main.js" } },
+    { "timestamp": "2026-04-12T13:00:03Z", "type": "tool_result", "tool": "read", "output": "file contents..." },
+    { "timestamp": "2026-04-12T13:00:05Z", "type": "tool_call", "tool": "exec", "args": { "command": "rm -rf /" } },
+    { "timestamp": "2026-04-12T13:00:05Z", "type": "error", "error": "EACCES: permission denied" }
+  ]
+}

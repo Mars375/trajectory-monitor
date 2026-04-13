@@ -49,3 +49,11 @@
 - Score MCP cohérent avec les signaux filesystem additionnels
 - Validation: **101/101 tests verts**, CLI OK, analyse live `/home/orion/.openclaw/cron/jobs.json` OK, transcript réel du cron analysé (26 runs)
 - Phase: VEILLE maintenue, backlog V2 recentré sur trend analysis / richer transcripts / MCP live mode
+
+## Session 2026-04-11 13:08 — Maintenance
+
+- **Phase**: MAINTENANCE (all P1-P15 DONE, no open issues)
+- **Smoke test**: 128 tests pass, live analysis OK (51 jobs, 66 signals)
+- **Self-analysis**: Score 41/D, improving (score_delta +17), 1 signal (crash_repeat critical — write failures 3x)
+- **Maintenance**: Committed PRD.md + ROADMAP.md, pushed 2 commits to origin
+- **Next**: V2 backlog items (MCP live mode, GitHub public promo, PyPI release) — needs forge-maintainer decision
