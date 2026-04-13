@@ -1,6 +1,6 @@
 # ACTIVE.md — trajectory-monitor
 
-**Phase**: VEILLE
+**Phase**: ACTIVE (JS implementation)
 **Repo**: https://github.com/Mars375/trajectory-monitor
 **Tag**: v0.2.0
 **Last validated**: 2026-04-10
@@ -57,3 +57,19 @@
 - **Self-analysis**: Score 41/D, improving (score_delta +17), 1 signal (crash_repeat critical — write failures 3x)
 - **Maintenance**: Committed PRD.md + ROADMAP.md, pushed 2 commits to origin
 - **Next**: V2 backlog items (MCP live mode, GitHub public promo, PyPI release) — needs forge-maintainer decision
+
+## Session 2026-04-13 14:50 — JS Implementation + Full Test Suite
+
+- **Phase**: ACTIVE (JS stack from PRD)
+- **Smoke test**: All 4 sample files produce correct reports via CLI
+- **New**: 5 JS test suites with 61 node:test tests, all passing
+  - parser.test.js (7) — normalizeSession, parseFile, sessionDuration
+  - detector.test.js (17) — loops, stagnation, crashes, detectAll
+  - scorer.test.js (19) — penalties, caps, grades, edge cases
+  - reporter.test.js (9) — formatReport, jsonReport
+  - integration.test.js (5) — full pipeline with all samples
+- **Added**: package.json (ESM, node:test), 4 sample JSON files
+- **Updated**: PRIORITIES P1-P6 → DONE, added P7-P9
+- **Updated**: ROADMAP Phase 1 fully complete
+- **Commit**: dbbda04 pushed to origin/main
+- **Next**: P7 — Détection avancée (hallucination, timeout)
