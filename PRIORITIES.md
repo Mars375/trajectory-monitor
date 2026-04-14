@@ -33,7 +33,7 @@
 - Reporter tests (9 tests)
 - Integration test avec sample data (5 tests)
 
-### P7 — Détection avancée (hallucination, timeout) [OPEN]
+### P7 — Détection avancée (hallucination, timeout) [DONE]
 - Hallucination : tool call avec arguments impossibles/incohérents
 - Timeout : session dépassant un seuil de durée sans résultat
 
