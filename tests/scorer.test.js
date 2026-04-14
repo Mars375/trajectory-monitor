@@ -98,6 +98,39 @@ describe('scorer — scoreSession', () => {
     assert.equal(breakdown.completionBonus, 0);
     assert.ok(score < 100);
   });
+
+  it('applies hallucination penalty of 15 per anomaly', () => {
+    const session = makeSession([{ type: 'tool_result', output: 'x' }]);
+    const anomalies = [
+      { type: 'hallucination', subtype: 'missing_tool', details: 'no tool', index: 0 },
+    ];
+    const { breakdown } = scoreSession(session, anomalies);
+    assert.equal(breakdown.hallucinationPenalty, 15);
+  });
+
+  it('applies timeout penalty of 25', () => {
+    const session = makeSession([{ type: 'tool_result', output: 'x' }]);
+    const anomalies = [
+      { type: 'timeout', durationMs: 3600000, thresholdMs: 1800000, details: 'timed out' },
+    ];
+    const { breakdown } = scoreSession(session, anomalies);
+    assert.equal(breakdown.timeoutPenalty, 25);
+  });
+
+  it('combined hallucination + timeout penalties', () => {
+    const session = makeSession([], 'crashed');
+    const anomalies = [
+      { type: 'crash', error: 'fatal' },
+      { type: 'hallucination', subtype: 'empty_args', tool: 'read', details: 'no args', index: 0 },
+      { type: 'hallucination', subtype: 'garbled_tool', tool: '7', details: 'garbled', index: 1 },
+      { type: 'timeout', durationMs: 3600000, thresholdMs: 1800000, details: 'timed out' },
+    ];
+    const { score, breakdown } = scoreSession(session, anomalies);
+    assert.equal(breakdown.hallucinationPenalty, 30); // 2 * 15
+    assert.equal(breakdown.timeoutPenalty, 25);
+    assert.equal(breakdown.crashPenalty, 40);
+    assert.ok(score >= 0);
+  });
 });
 
 describe('scorer — grade', () => {

@@ -1,0 +1,15 @@
+{
+  "sessionId": "timeout-001",
+  "agentId": "agent-stuck",
+  "status": "running",
+  "startTime": "2026-04-14T08:00:00Z",
+  "endTime": "2026-04-14T09:15:00Z",
+  "events": [
+    { "type": "tool_call", "tool": "search", "args": { "query": "fix bug" }, "timestamp": "2026-04-14T08:00:00Z" },
+    { "type": "tool_result", "output": "10 results found" },
+    { "type": "tool_call", "tool": "read", "args": { "path": "src/bug.js" }, "timestamp": "2026-04-14T08:30:00Z" },
+    { "type": "tool_result", "output": "file contents..." },
+    { "type": "tool_call", "tool": "edit", "args": { "path": "src/bug.js" }, "timestamp": "2026-04-14T09:00:00Z" },
+    { "type": "tool_result", "output": "edit applied" }
+  ]
+}

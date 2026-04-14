@@ -12,6 +12,8 @@ export function scoreSession(session, anomalies) {
     loopPenalty: 0,
     stagnationPenalty: 0,
     crashPenalty: 0,
+    hallucinationPenalty: 0,
+    timeoutPenalty: 0,
     completionBonus: 0,
     efficiencyBonus: 0,
   };
@@ -27,6 +29,12 @@ export function scoreSession(session, anomalies) {
         break;
       case 'crash':
         breakdown.crashPenalty += 40;
+        break;
+      case 'hallucination':
+        breakdown.hallucinationPenalty += 15;
+        break;
+      case 'timeout':
+        breakdown.timeoutPenalty += 25;
         break;
     }
   }
@@ -52,6 +60,8 @@ export function scoreSession(session, anomalies) {
     - breakdown.loopPenalty
     - breakdown.stagnationPenalty
     - breakdown.crashPenalty
+    - breakdown.hallucinationPenalty
+    - breakdown.timeoutPenalty
     + breakdown.completionBonus
     + breakdown.efficiencyBonus
   ));

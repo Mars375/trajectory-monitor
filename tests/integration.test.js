@@ -48,12 +48,32 @@ describe('integration — full pipeline with sample data', () => {
     assert.ok(score < 80, `Expected score < 80 for stagnation, got ${score}`);
   });
 
+  it('hallucination-session: detects hallucination anomaly', () => {
+    const sessions = parseFile(sample('hallucination-session.json'));
+    const anomalies = detectAll(sessions[0]);
+    const types = anomalies.map(a => a.type);
+    assert.ok(types.includes('hallucination'), 'Expected hallucination anomaly');
+    const { score } = scoreSession(sessions[0], anomalies);
+    assert.ok(score < 80, `Expected score < 80 for hallucination, got ${score}`);
+  });
+
+  it('timeout-session: detects timeout anomaly', () => {
+    const sessions = parseFile(sample('timeout-session.json'));
+    const anomalies = detectAll(sessions[0]);
+    const types = anomalies.map(a => a.type);
+    assert.ok(types.includes('timeout'), 'Expected timeout anomaly');
+    const { score } = scoreSession(sessions[0], anomalies);
+    assert.ok(score < 85, `Expected score < 85 for timeout, got ${score}`);
+  });
+
   it('all samples produce valid scores (0-100)', () => {
     const files = [
       sample('normal-session.json'),
       sample('loop-session.json'),
       sample('crash-session.json'),
       sample('stagnation-session.json'),
+      sample('hallucination-session.json'),
+      sample('timeout-session.json'),
     ];
     for (const file of files) {
       const sessions = parseFile(file);
