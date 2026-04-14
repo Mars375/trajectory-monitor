@@ -43,6 +43,12 @@ export function formatReport(session, anomalies, scoring) {
         case 'crash':
           lines.push(`    💥 CRASH — ${a.error}`);
           break;
+        case 'hallucination':
+          lines.push(`    🌀 HALLUCINATION [${a.subtype}] — ${a.tool ? `tool "${a.tool}"` : 'unknown tool'}: ${a.details}`);
+          break;
+        case 'timeout':
+          lines.push(`    ⏱️  TIMEOUT — ${a.details}`);
+          break;
         default:
           lines.push(`    ❓ ${a.type}`);
       }
@@ -54,12 +60,14 @@ export function formatReport(session, anomalies, scoring) {
   // Breakdown
   const b = scoring.breakdown;
   lines.push('  Score Breakdown:');
-  lines.push(`    Base:              ${b.base}`);
-  lines.push(`    Loop penalty:      -${b.loopPenalty}`);
-  lines.push(`    Stagnation penalty: -${b.stagnationPenalty}`);
-  lines.push(`    Crash penalty:     -${b.crashPenalty}`);
-  lines.push(`    Completion bonus:  +${b.completionBonus}`);
-  lines.push(`    Efficiency bonus:  +${b.efficiencyBonus}`);
+  lines.push(`    Base:                 ${b.base}`);
+  lines.push(`    Loop penalty:         -${b.loopPenalty}`);
+  lines.push(`    Stagnation penalty:   -${b.stagnationPenalty}`);
+  lines.push(`    Crash penalty:        -${b.crashPenalty}`);
+  lines.push(`    Hallucination penalty: -${b.hallucinationPenalty}`);
+  lines.push(`    Timeout penalty:      -${b.timeoutPenalty}`);
+  lines.push(`    Completion bonus:     +${b.completionBonus}`);
+  lines.push(`    Efficiency bonus:     +${b.efficiencyBonus}`);
   lines.push('═'.repeat(60));
 
   return lines.join('\n');

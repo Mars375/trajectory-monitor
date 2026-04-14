@@ -1,0 +1,22 @@
+{
+  "sessionId": "hall-001",
+  "agentId": "agent-unstable",
+  "status": "unknown",
+  "startTime": "2026-04-14T10:00:00Z",
+  "endTime": "2026-04-14T10:05:00Z",
+  "events": [
+    { "type": "tool_call", "tool": "read", "args": { "path": "config.json" } },
+    { "type": "tool_result", "output": "file contents" },
+    { "type": "tool_call", "tool": "", "args": { "path": "missing.js" } },
+    { "type": "tool_call", "tool": "exec", "args": null },
+    { "type": "tool_result", "output": "error: no command", "error": "No command specified" },
+    { "type": "tool_call", "tool": "read" },
+    { "type": "tool_call", "tool": "7", "args": {} },
+    { "type": "tool_call", "tool": "exec", "args": null },
+    { "type": "tool_result", "output": "error: no command", "error": "No command specified" },
+    { "type": "tool_call", "tool": "exec", "args": null },
+    { "type": "tool_result", "output": "error: no command", "error": "No command specified" },
+    { "type": "tool_call", "tool": "exec", "args": null },
+    { "type": "tool_result", "output": "error: no command", "error": "No command specified" }
+  ]
+}

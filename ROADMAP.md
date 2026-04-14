@@ -11,7 +11,7 @@
 
 ## Phase 2 : Robustesse
 - [x] Samples de données réalistes pour les tests
-- [ ] Détection avancée (hallucination, timeout)
+- [x] Détection avancée (hallucination, timeout)
 - [ ] Benchmarks de performance
 - [ ] Intégration continue
 
